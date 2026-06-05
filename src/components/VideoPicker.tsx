@@ -21,13 +21,27 @@ function trim(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
 
+// Warm the comment cache (edge/KV) on hover so the click feels instant.
+// Deduped per (video, order) for the page lifetime.
+const prefetched = new Set<string>();
+function prefetchComments(videoId: string, order: string) {
+  const key = `${videoId}:${order}`;
+  if (prefetched.has(key)) return;
+  prefetched.add(key);
+  fetch(
+    `/api/comments?videoId=${encodeURIComponent(videoId)}&order=${order}`,
+  ).catch(() => prefetched.delete(key));
+}
+
 export function VideoPicker({
   videos,
   selectedId,
+  order,
   onSelect,
 }: {
   videos: VideoSummary[];
   selectedId: string | null;
+  order: "relevance" | "time";
   onSelect: (id: string) => void;
 }) {
   return (
@@ -38,6 +52,8 @@ export function VideoPicker({
           <li key={v.id}>
             <button
               onClick={() => onSelect(v.id)}
+              onMouseEnter={() => prefetchComments(v.id, order)}
+              onFocus={() => prefetchComments(v.id, order)}
               className={`group flex w-full items-start gap-3 rounded-2xl p-2.5 text-left transition-colors ${
                 active ? "bg-accent" : "hover:bg-[var(--surface-2)]"
               }`}

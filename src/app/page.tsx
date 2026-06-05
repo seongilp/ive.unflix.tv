@@ -222,6 +222,7 @@ export default function Home() {
               <VideoPicker
                 videos={filtered}
                 selectedId={selectedId}
+                order={order}
                 onSelect={setSelectedId}
               />
             ) : (
