@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rescene",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-03-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    // App cache: video / Shorts classification per channel.
+    {
+      "binding": "SHORTS_CACHE",
+      "id": "ed22daa6702e4a538075ca424b7d8e0b"
+    },
+    // OpenNext incremental cache (ISR / Next data cache).
+    {
+      "binding": "NEXT_INC_CACHE_KV",
+      "id": "2248c1ff2e054afa9ad38b91139e38b0"
+    }
+  ]
+}
