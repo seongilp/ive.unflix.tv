@@ -323,12 +323,33 @@ async function fetchVideoMeta(ids: string[]): Promise<Map<string, VideoMeta>> {
   return out;
 }
 
-// Fetch top-level comments for a video. Supports pagination via pageToken.
+interface CommentPage {
+  comments: CommentItem[];
+  nextPageToken?: string;
+}
+
+// How long a comment page stays cached in KV.
+const COMMENTS_TTL_SECONDS = 300;
+
+// Fetch top-level comments for a video. Supports pagination via pageToken and
+// an optional KV cache (5-min TTL) so repeat views are near-instant.
 export async function listComments(
   videoId: string,
   pageToken?: string,
   order: "relevance" | "time" = "relevance",
-): Promise<{ comments: CommentItem[]; nextPageToken?: string }> {
+  cache?: ShortsCache,
+): Promise<CommentPage> {
+  const cacheKey = `comments:v1:${videoId}:${order}:${pageToken ?? "0"}`;
+
+  if (cache) {
+    try {
+      const raw = await cache.get(cacheKey);
+      if (raw) return JSON.parse(raw) as CommentPage;
+    } catch {
+      // ignore cache read failures
+    }
+  }
+
   const params: Record<string, string> = {
     part: "snippet",
     videoId,
@@ -368,5 +389,17 @@ export async function listComments(
     };
   });
 
-  return { comments, nextPageToken: data.nextPageToken };
+  const page: CommentPage = { comments, nextPageToken: data.nextPageToken };
+
+  if (cache) {
+    try {
+      await cache.put(cacheKey, JSON.stringify(page), {
+        expirationTtl: COMMENTS_TTL_SECONDS,
+      });
+    } catch {
+      // ignore cache write failures
+    }
+  }
+
+  return page;
 }

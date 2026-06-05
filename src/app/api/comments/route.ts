@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
-import { listComments, YoutubeError } from "@/lib/youtube";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { listComments, YoutubeError, type ShortsCache } from "@/lib/youtube";
+
+// Reuse the app KV namespace for comment-page caching (different key prefix).
+function commentsCache(): ShortsCache | undefined {
+  try {
+    return getCloudflareContext().env.SHORTS_CACHE as ShortsCache | undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // GET /api/comments?videoId=X&pageToken=Y&order=relevance|time
-// Returns one page of top-level comments for a video.
+// Returns one page of top-level comments for a video (KV-cached, 5-min TTL).
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get("videoId");
@@ -14,7 +24,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await listComments(videoId, pageToken, order);
+    const result = await listComments(
+      videoId,
+      pageToken,
+      order,
+      commentsCache(),
+    );
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof YoutubeError) {
