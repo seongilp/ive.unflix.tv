@@ -6,18 +6,13 @@ import type { CommentItem } from "@/lib/types";
 function CommentRow({
   comment,
   rank,
-  delayMs,
 }: {
   comment: CommentItem;
   rank: number;
-  delayMs: number;
 }) {
   const isTop = rank <= 3;
   return (
-    <li
-      className="rise flex items-start gap-3.5 px-6 py-5 transition-colors hover:bg-[var(--surface-2)]"
-      style={{ animationDelay: `${delayMs}ms` }}
-    >
+    <li className="flex items-start gap-3.5 px-6 py-5 transition-colors hover:bg-[var(--surface-2)]">
       {/* Rank */}
       <span
         className={`num w-6 shrink-0 pt-1.5 text-center text-sm font-bold ${
@@ -82,12 +77,7 @@ export function CommentList({
     <div className="h-full overflow-y-auto">
       <ul className="divide-y divide-[var(--color-line)]">
         {comments.map((c, i) => (
-          <CommentRow
-            key={c.id}
-            comment={c}
-            rank={i + 1}
-            delayMs={Math.min(i, 14) * 24}
-          />
+          <CommentRow key={c.id} comment={c} rank={i + 1} />
         ))}
       </ul>
 
