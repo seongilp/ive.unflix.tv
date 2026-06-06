@@ -10,12 +10,13 @@ import { CommentList } from "@/components/CommentList";
 import { VideoPicker, formatCount } from "@/components/VideoPicker";
 import { HallOfFame } from "@/components/HallOfFame";
 import { SearchView } from "@/components/SearchView";
+import { SyncView } from "@/components/SyncView";
 import { preloadFirstPages } from "@/lib/commentsCache";
 
 const DEFAULT_HANDLE = "@helloiamwoninicetomeetyou";
 const SPEEDS: StreamSpeed[] = ["slow", "normal", "fast"];
 
-type ViewMode = "list" | "live" | "hall" | "search";
+type ViewMode = "list" | "live" | "sync" | "hall" | "search";
 
 // Channel-wide views (not tied to the selected video).
 const CHANNEL_VIEWS: ViewMode[] = ["hall", "search"];
@@ -92,7 +93,7 @@ export default function Home() {
     maxVisible: 60,
   });
   const list = useComments({
-    videoId: mode === "list" ? selectedId : null,
+    videoId: mode === "list" || mode === "sync" ? selectedId : null,
     order,
   });
 
@@ -300,6 +301,7 @@ export default function Home() {
               options={[
                 { value: "list", label: "목록" },
                 { value: "live", label: "라이브" },
+                { value: "sync", label: "동기화" },
                 { value: "hall", label: "전당" },
                 { value: "search", label: "검색" },
               ]}
@@ -382,6 +384,8 @@ export default function Home() {
               />
             ) : !selectedId ? (
               <EmptyState message="영상을 선택하세요" />
+            ) : mode === "sync" ? (
+              <SyncView videoId={selectedId} comments={list.comments} />
             ) : mode === "live" ? (
               live.state.error ? (
                 <EmptyState message={live.state.error} tone="error" />
