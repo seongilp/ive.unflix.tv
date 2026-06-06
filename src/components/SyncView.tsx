@@ -81,9 +81,15 @@ export function SyncView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Player */}
-      <div className="aspect-video w-full shrink-0 bg-black">
-        <div ref={wrapperRef} className="h-full w-full" />
+      {/* Player — 16:9, capped so it never eats the whole viewport (timeline
+          stays visible below). Letterboxed on ultra-wide screens. */}
+      <div className="flex shrink-0 justify-center bg-black">
+        <div
+          className="aspect-video w-full"
+          style={{ maxWidth: "min(100%, calc(56vh * 16 / 9))" }}
+        >
+          <div ref={wrapperRef} className="h-full w-full" />
+        </div>
       </div>
 
       {/* Timestamped comments */}
