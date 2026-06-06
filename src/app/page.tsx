@@ -152,6 +152,16 @@ export default function Home() {
   const selectedVideo = videos.find((v) => v.id === selectedId) ?? null;
   const isChannelView = CHANNEL_VIEWS.includes(mode);
 
+  // "인기순" should be true likes-descending (YouTube's relevance order mixes in
+  // pins/replies/recency); "최신순" keeps YouTube's chronological order.
+  const listComments = useMemo(
+    () =>
+      order === "relevance"
+        ? [...list.comments].sort((a, b) => b.likeCount - a.likeCount)
+        : list.comments,
+    [list.comments, order],
+  );
+
   // Pick a video from the rail; leave channel-wide views for the per-video view.
   const selectVideo = (id: string) => {
     setSelectedId(id);
@@ -435,7 +445,7 @@ export default function Home() {
               />
             ) : (
               <CommentList
-                comments={list.comments}
+                comments={listComments}
                 loading={list.loading}
                 hasMore={list.hasMore}
                 onLoadMore={list.loadMore}
