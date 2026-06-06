@@ -4,10 +4,15 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-03-25",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "assets": {
     "binding": "ASSETS",
     "directory": ".open-next/assets"
   },
+  "routes": [
+    // Custom domain. Resolves once rescene.co's nameservers point to Cloudflare.
+    { "pattern": "yaho.rescene.co", "custom_domain": true }
+  ],
   "observability": {
     "enabled": true
   },
