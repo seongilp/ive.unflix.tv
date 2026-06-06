@@ -8,12 +8,17 @@ import { useComments } from "@/lib/useComments";
 import { LiveChat } from "@/components/LiveChat";
 import { CommentList } from "@/components/CommentList";
 import { VideoPicker, formatCount } from "@/components/VideoPicker";
+import { HallOfFame } from "@/components/HallOfFame";
+import { SearchView } from "@/components/SearchView";
 import { preloadFirstPages } from "@/lib/commentsCache";
 
 const DEFAULT_HANDLE = "@helloiamwoninicetomeetyou";
 const SPEEDS: StreamSpeed[] = ["slow", "normal", "fast"];
 
-type ViewMode = "list" | "live";
+type ViewMode = "list" | "live" | "hall" | "search";
+
+// Channel-wide views (not tied to the selected video).
+const CHANNEL_VIEWS: ViewMode[] = ["hall", "search"];
 
 /** Toss-style pill segmented control. */
 function Segmented<T extends string>({
@@ -143,6 +148,21 @@ export default function Home() {
   };
 
   const selectedVideo = videos.find((v) => v.id === selectedId) ?? null;
+  const isChannelView = CHANNEL_VIEWS.includes(mode);
+
+  // Pick a video from the rail; leave channel-wide views for the per-video view.
+  const selectVideo = (id: string) => {
+    setSelectedId(id);
+    setMode((m) => (CHANNEL_VIEWS.includes(m) ? "list" : m));
+  };
+
+  // Jump to a video from hall/search (also align the 영상/쇼츠 filter to it).
+  const jumpToVideo = (id: string) => {
+    const v = videos.find((x) => x.id === id);
+    if (v) setClipKind(v.kind);
+    setSelectedId(id);
+    setMode("list");
+  };
 
   // Shared rail content (used by the desktop sidebar and the mobile drawer).
   const railBody = (onPick: (id: string) => void) => (
@@ -256,7 +276,7 @@ export default function Home() {
       <div className="flex min-h-0 flex-1">
         {/* ───────────── Video rail (desktop) ───────────── */}
         <aside className="hidden w-96 shrink-0 flex-col border-r border-line bg-[var(--surface)] md:flex">
-          {railBody(setSelectedId)}
+          {railBody(selectVideo)}
         </aside>
 
         {/* ───────────── Stage ───────────── */}
@@ -280,6 +300,8 @@ export default function Home() {
               options={[
                 { value: "list", label: "목록" },
                 { value: "live", label: "라이브" },
+                { value: "hall", label: "전당" },
+                { value: "search", label: "검색" },
               ]}
             />
 
@@ -320,15 +342,17 @@ export default function Home() {
               </div>
             )}
 
-            <span className="num ml-auto text-[12px] text-faint">
-              {mode === "live"
-                ? `${live.state.shown} / ${live.state.total}`
-                : `댓글 ${list.comments.length}개`}
-            </span>
+            {!isChannelView && (
+              <span className="num ml-auto text-[12px] text-faint">
+                {mode === "live"
+                  ? `${live.state.shown} / ${live.state.total}`
+                  : `댓글 ${list.comments.length}개`}
+              </span>
+            )}
           </div>
 
           {/* Now playing */}
-          {selectedVideo && (
+          {selectedVideo && !isChannelView && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2.5 sm:px-6">
               <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
                 {selectedVideo.kind === "short" ? "쇼츠" : "영상"}
@@ -346,7 +370,17 @@ export default function Home() {
 
           {/* Surface */}
           <div className="relative min-h-0 flex-1">
-            {!selectedId ? (
+            {mode === "hall" ? (
+              <HallOfFame videos={videos} order={order} onJump={jumpToVideo} />
+            ) : mode === "search" ? (
+              <SearchView
+                videos={videos}
+                order={order}
+                onJump={jumpToVideo}
+                channelTitle={channel?.title ?? ""}
+                channelHandle={channel?.handle ?? ""}
+              />
+            ) : !selectedId ? (
               <EmptyState message="영상을 선택하세요" />
             ) : mode === "live" ? (
               live.state.error ? (
@@ -396,7 +430,7 @@ export default function Home() {
               </button>
             </div>
             {railBody((id) => {
-              setSelectedId(id);
+              selectVideo(id);
               setRailOpen(false);
             })}
           </div>

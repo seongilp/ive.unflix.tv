@@ -13,9 +13,35 @@ export interface CommentPage {
 
 const cache = new Map<string, CommentPage>();
 const inflight = new Map<string, Promise<CommentPage>>();
+const listeners = new Set<() => void>();
 
 function key(videoId: string, order: string): string {
   return `${videoId}:${order}`;
+}
+
+function notify() {
+  for (const l of listeners) l();
+}
+
+// Subscribe to cache changes (fires as background preload fills it).
+export function subscribe(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+// All cached first pages for a given sort order, tagged with their videoId.
+export function getAllFirstPages(
+  order: string,
+): Array<{ videoId: string; comments: CommentItem[] }> {
+  const out: Array<{ videoId: string; comments: CommentItem[] }> = [];
+  for (const [k, page] of cache) {
+    const sep = k.lastIndexOf(":");
+    if (k.slice(sep + 1) !== order) continue;
+    out.push({ videoId: k.slice(0, sep), comments: page.comments });
+  }
+  return out;
 }
 
 export function getCachedFirstPage(
