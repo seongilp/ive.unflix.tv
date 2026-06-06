@@ -289,28 +289,34 @@ interface VideoMeta {
 }
 
 // Batch-fetch duration + statistics keyed by video id. The videos endpoint
-// accepts up to 50 ids per call, so we chunk.
+// accepts up to 50 ids per call; chunks run in parallel.
 async function fetchVideoMeta(ids: string[]): Promise<Map<string, VideoMeta>> {
   const out = new Map<string, VideoMeta>();
 
-  for (let i = 0; i < ids.length; i += 50) {
-    const chunk = ids.slice(i, i + 50);
-    const data = await call<{
-      items?: Array<{
-        id: string;
-        contentDetails: { duration: string };
-        statistics?: {
-          viewCount?: string;
-          likeCount?: string;
-          commentCount?: string;
-        };
-      }>;
-    }>("videos", {
-      part: "contentDetails,statistics",
-      id: chunk.join(","),
-      maxResults: "50",
-    });
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
 
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      call<{
+        items?: Array<{
+          id: string;
+          contentDetails: { duration: string };
+          statistics?: {
+            viewCount?: string;
+            likeCount?: string;
+            commentCount?: string;
+          };
+        }>;
+      }>("videos", {
+        part: "contentDetails,statistics",
+        id: chunk.join(","),
+        maxResults: "50",
+      }),
+    ),
+  );
+
+  for (const data of pages) {
     for (const item of data.items ?? []) {
       out.set(item.id, {
         durationSeconds: parseIsoDuration(item.contentDetails.duration),
