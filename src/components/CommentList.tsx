@@ -2,13 +2,16 @@
 
 import Image from "next/image";
 import type { CommentItem } from "@/lib/types";
+import { CommentText } from "./CommentText";
 
 function CommentRow({
   comment,
   rank,
+  videoId,
 }: {
   comment: CommentItem;
   rank: number;
+  videoId: string | null;
 }) {
   const isTop = rank <= 3;
   return (
@@ -45,7 +48,7 @@ function CommentRow({
           )}
         </div>
         <p className="whitespace-pre-wrap break-words text-[16px] leading-relaxed text-ink">
-          {comment.text}
+          <CommentText text={comment.text} videoId={videoId} />
         </p>
       </div>
 
@@ -67,17 +70,19 @@ export function CommentList({
   loading,
   hasMore,
   onLoadMore,
+  videoId,
 }: {
   comments: CommentItem[];
   loading: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  videoId: string | null;
 }) {
   return (
     <div className="h-full overflow-y-auto">
       <ul className="divide-y divide-[var(--color-line)]">
         {comments.map((c, i) => (
-          <CommentRow key={c.id} comment={c} rank={i + 1} />
+          <CommentRow key={c.id} comment={c} rank={i + 1} videoId={videoId} />
         ))}
       </ul>
 

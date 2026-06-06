@@ -2,8 +2,15 @@
 
 import Image from "next/image";
 import type { CommentItem } from "@/lib/types";
+import { CommentText } from "./CommentText";
 
-export function ChatMessage({ comment }: { comment: CommentItem }) {
+export function ChatMessage({
+  comment,
+  videoId,
+}: {
+  comment: CommentItem;
+  videoId: string | null;
+}) {
   return (
     <div className="chat-row flex items-start gap-2.5 px-5 py-2 text-[15px] leading-snug">
       <Image
@@ -18,7 +25,9 @@ export function ChatMessage({ comment }: { comment: CommentItem }) {
         <span className="mr-1.5 font-semibold text-muted">
           {comment.author}
         </span>
-        <span className="text-ink">{comment.text}</span>
+        <span className="text-ink">
+          <CommentText text={comment.text} videoId={videoId} />
+        </span>
         {comment.likeCount > 0 && (
           <span className="num ml-1.5 align-middle text-xs text-faint">
             ♥ {comment.likeCount}

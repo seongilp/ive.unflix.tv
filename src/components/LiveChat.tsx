@@ -5,7 +5,13 @@ import type { RevealedComment } from "@/lib/useLiveStream";
 import { ChatMessage } from "./ChatMessage";
 
 // Scrolling live-chat surface. Auto-sticks to the bottom as new messages land.
-export function LiveChat({ messages }: { messages: RevealedComment[] }) {
+export function LiveChat({
+  messages,
+  videoId,
+}: {
+  messages: RevealedComment[];
+  videoId: string | null;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -18,7 +24,7 @@ export function LiveChat({ messages }: { messages: RevealedComment[] }) {
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-[var(--surface)] to-transparent" />
       <div className="flex h-full flex-col justify-end overflow-y-auto pb-3">
         {messages.map((m) => (
-          <ChatMessage key={m.uid} comment={m} />
+          <ChatMessage key={m.uid} comment={m} videoId={videoId} />
         ))}
         <div ref={endRef} />
       </div>

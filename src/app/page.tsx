@@ -337,7 +337,7 @@ export default function Home() {
               ) : live.state.visible.length === 0 ? (
                 <EmptyState message="채팅 준비 중…" />
               ) : (
-                <LiveChat messages={live.state.visible} />
+                <LiveChat messages={live.state.visible} videoId={selectedId} />
               )
             ) : list.error ? (
               <EmptyState message={list.error} tone="error" />
@@ -351,6 +351,7 @@ export default function Home() {
                 loading={list.loading}
                 hasMore={list.hasMore}
                 onLoadMore={list.loadMore}
+                videoId={selectedId}
               />
             )}
           </div>
