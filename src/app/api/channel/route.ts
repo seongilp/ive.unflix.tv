@@ -75,7 +75,7 @@ async function compute(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const handle = searchParams.get("handle") || DEFAULT_HANDLE;
-  const kvKey = `channel:v1:${handle.toLowerCase()}`;
+  const kvKey = `channel:v2:${handle.toLowerCase()}`;
 
   const edge = edgeCache();
   if (edge) {
@@ -92,12 +92,15 @@ export async function GET(request: Request) {
     try {
       const raw = await kv.get(kvKey);
       if (raw) {
-        const entry = JSON.parse(raw) as CacheEntry;
-        // Serve immediately; refresh in the background if stale.
-        if (Date.now() - entry.ts > FRESH_MS) {
-          bg(compute(handle, kvKey, kv));
+        const entry = JSON.parse(raw) as Partial<CacheEntry>;
+        // Only trust a well-formed entry; anything else falls through to a
+        // fresh compute (so stale/old-format entries can't serve "undefined").
+        if (entry && entry.data && typeof entry.ts === "number") {
+          if (Date.now() - entry.ts > FRESH_MS) {
+            bg(compute(handle, kvKey, kv));
+          }
+          return respond(entry.data, request, edge);
         }
-        return respond(entry.data, request, edge);
       }
     } catch {
       // ignore
@@ -120,10 +123,17 @@ export async function GET(request: Request) {
 }
 
 function respond(
-  payload: ChannelPayload,
+  payload: ChannelPayload | undefined,
   request: Request,
   edge?: Cache,
 ): Response {
+  // Never serialize undefined (that produces the body literal "undefined").
+  if (!payload) {
+    return NextResponse.json(
+      { error: "Failed to load channel." },
+      { status: 500 },
+    );
+  }
   const res = NextResponse.json(payload, {
     headers: { "Cache-Control": `public, s-maxage=${EDGE_MAXAGE}` },
   });
