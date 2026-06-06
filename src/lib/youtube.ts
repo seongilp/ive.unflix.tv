@@ -41,35 +41,76 @@ export class YoutubeError extends Error {
   }
 }
 
-function apiKey(): string {
-  const key = process.env.YOUTUBE_API_KEY;
-  if (!key) {
+// One or more API keys, comma-separated in YOUTUBE_API_KEY. Multiple keys let
+// the app survive a daily-quota exhaustion: when one key returns
+// quotaExceeded/dailyLimitExceeded we rotate to the next instead of failing.
+function apiKeys(): string[] {
+  const raw = process.env.YOUTUBE_API_KEY;
+  const keys = (raw ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  if (keys.length === 0) {
     throw new YoutubeError(
       "YOUTUBE_API_KEY is not configured on the server.",
       500,
     );
   }
-  return key;
+  return keys;
 }
+
+// Cursor into the key list, advanced past keys already known to be exhausted
+// within this isolate's lifetime so we don't waste round-trips re-trying them.
+let keyCursor = 0;
+
+// Quota-style failures that should trigger a rotation to the next key.
+const QUOTA_REASONS = new Set([
+  "quotaExceeded",
+  "dailyLimitExceeded",
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+]);
 
 async function call<T>(
   path: string,
   params: Record<string, string>,
 ): Promise<T> {
-  const url = new URL(`${API_BASE}/${path}`);
-  url.search = new URLSearchParams({ ...params, key: apiKey() }).toString();
+  const keys = apiKeys();
+  let lastError: YoutubeError | undefined;
 
-  const res = await fetch(url, { next: { revalidate: 0 } });
-  const body = (await res.json()) as {
-    error?: { errors?: Array<{ reason?: string }>; message?: string };
-  };
+  // Try each remaining key once, starting from the current cursor.
+  for (let attempt = 0; attempt < keys.length; attempt++) {
+    const idx = (keyCursor + attempt) % keys.length;
+    const url = new URL(`${API_BASE}/${path}`);
+    url.search = new URLSearchParams({ ...params, key: keys[idx] }).toString();
 
-  if (!res.ok) {
+    const res = await fetch(url, { next: { revalidate: 0 } });
+    const body = (await res.json()) as {
+      error?: { errors?: Array<{ reason?: string }>; message?: string };
+    };
+
+    if (res.ok) {
+      keyCursor = idx; // stick with the key that worked
+      return body as T;
+    }
+
     const reason: string =
       body?.error?.errors?.[0]?.reason ?? body?.error?.message ?? res.statusText;
-    throw new YoutubeError(`YouTube API error: ${reason}`, res.status);
+    lastError = new YoutubeError(`YouTube API error: ${reason}`, res.status);
+
+    // Rotate only on quota/rate failures; other errors (404, bad request) are
+    // real and won't be fixed by another key.
+    const isQuota = res.status === 403 && QUOTA_REASONS.has(reason);
+    if (!isQuota) throw lastError;
+
+    keyCursor = idx + 1; // skip this exhausted key for subsequent calls
   }
-  return body as T;
+
+  // Every key is exhausted.
+  throw (
+    lastError ??
+    new YoutubeError("YouTube API error: all keys exhausted", 403)
+  );
 }
 
 // Resolve a channel from a handle ("@name" or "name") or a raw channel ID.
