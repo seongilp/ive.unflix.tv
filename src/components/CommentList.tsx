@@ -34,12 +34,12 @@ function CommentRow({
 
       {/* Body */}
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-[14px] font-semibold text-muted">
+        <div className="mb-1 flex min-w-0 items-center gap-2">
+          <span className="truncate text-[14px] font-semibold text-muted">
             {comment.author}
           </span>
           {isTop && (
-            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
               인기
             </span>
           )}

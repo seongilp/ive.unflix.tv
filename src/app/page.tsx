@@ -55,6 +55,7 @@ export default function Home() {
   const [order, setOrder] = useState<"relevance" | "time">("relevance");
   const [mode, setMode] = useState<ViewMode>("list");
   const [loop, setLoop] = useState(true);
+  const [railOpen, setRailOpen] = useState(false); // mobile video drawer
   const [channelLoading, setChannelLoading] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
 
@@ -126,18 +127,55 @@ export default function Home() {
 
   const selectedVideo = videos.find((v) => v.id === selectedId) ?? null;
 
+  // Shared rail content (used by the desktop sidebar and the mobile drawer).
+  const railBody = (onPick: (id: string) => void) => (
+    <>
+      <div className="flex flex-col gap-3 border-b border-line px-4 py-3.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[13px] font-bold text-ink">동영상</span>
+          <span className="num text-[12px] text-faint">
+            {filtered.length}개 · 출시순
+          </span>
+        </div>
+        <Segmented<ClipKind>
+          size="sm"
+          value={clipKind}
+          onChange={setClipKind}
+          options={[
+            { value: "video", label: `영상 ${counts.video}` },
+            { value: "short", label: `쇼츠 ${counts.short}` },
+          ]}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {filtered.length > 0 ? (
+          <VideoPicker
+            videos={filtered}
+            selectedId={selectedId}
+            order={order}
+            onSelect={onPick}
+          />
+        ) : (
+          <p className="px-4 py-10 text-center text-[13px] text-faint">
+            {channelLoading ? "불러오는 중…" : "해당 항목이 없어요"}
+          </p>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <main className="flex h-dvh flex-col">
       {/* ───────────── Header ───────────── */}
-      <header className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-line bg-[var(--surface)] px-6 py-3.5">
-        <div className="flex items-center gap-2.5">
+      <header className="flex flex-nowrap items-center gap-x-3 border-b border-line bg-[var(--surface)] px-4 py-3 sm:gap-x-5 sm:px-6 sm:py-3.5">
+        <div className="flex shrink-0 items-center gap-2.5">
           <span className="relative flex h-2 w-2 items-center justify-center">
             {mode === "live" && (
               <span className="live-ring absolute h-2 w-2 rounded-full bg-accent" />
             )}
             <span className="h-2 w-2 rounded-full bg-accent" />
           </span>
-          <span className="text-[19px] font-extrabold tracking-tight text-ink">
+          <span className="text-[18px] font-extrabold tracking-tight text-ink sm:text-[19px]">
             RESCENE
           </span>
           <span className="rounded-full bg-accent-soft px-2.5 py-1 text-[11px] font-bold text-accent">
@@ -145,8 +183,9 @@ export default function Home() {
           </span>
         </div>
 
+        {/* Channel chip — hidden on mobile to keep the header one line. */}
         {channel && (
-          <div className="flex items-center gap-2.5 border-l border-line pl-5">
+          <div className="hidden shrink-0 items-center gap-2.5 border-l border-line pl-5 md:flex">
             {channel.thumbnail && (
               <Image
                 src={channel.thumbnail}
@@ -168,18 +207,18 @@ export default function Home() {
 
         <form
           onSubmit={onSubmitHandle}
-          className="ml-auto flex items-center gap-2"
+          className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 md:flex-none"
         >
           <input
             value={handleInput}
             onChange={(e) => setHandleInput(e.target.value)}
             placeholder="@채널 핸들"
-            className="w-48 rounded-full border border-line bg-[var(--surface-2)] px-4 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus:bg-white"
+            className="w-full min-w-0 rounded-full border border-line bg-[var(--surface-2)] px-4 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus:bg-white md:w-48"
           />
           <button
             type="submit"
             disabled={channelLoading}
-            className="rounded-full bg-accent px-4 py-2 text-[13px] font-bold text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
+            className="shrink-0 rounded-full bg-accent px-4 py-2 text-[13px] font-bold text-white transition-colors hover:bg-accent-ink disabled:opacity-50"
           >
             {channelLoading ? "..." : "불러오기"}
           </button>
@@ -198,45 +237,26 @@ export default function Home() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* ───────────── Video rail ───────────── */}
+        {/* ───────────── Video rail (desktop) ───────────── */}
         <aside className="hidden w-96 shrink-0 flex-col border-r border-line bg-[var(--surface)] md:flex">
-          <div className="flex flex-col gap-3 border-b border-line px-4 py-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[13px] font-bold text-ink">동영상</span>
-              <span className="num text-[12px] text-faint">
-                {filtered.length}개 · 출시순
-              </span>
-            </div>
-            <Segmented<ClipKind>
-              size="sm"
-              value={clipKind}
-              onChange={setClipKind}
-              options={[
-                { value: "video", label: `영상 ${counts.video}` },
-                { value: "short", label: `쇼츠 ${counts.short}` },
-              ]}
-            />
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {filtered.length > 0 ? (
-              <VideoPicker
-                videos={filtered}
-                selectedId={selectedId}
-                order={order}
-                onSelect={setSelectedId}
-              />
-            ) : (
-              <p className="px-4 py-10 text-center text-[13px] text-faint">
-                {channelLoading ? "불러오는 중…" : "해당 항목이 없어요"}
-              </p>
-            )}
-          </div>
+          {railBody(setSelectedId)}
         </aside>
 
         {/* ───────────── Stage ───────────── */}
         <section className="relative flex min-w-0 flex-1 flex-col bg-[var(--surface)]">
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-6 py-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 sm:px-6">
+            {/* Mobile: open the video drawer */}
+            <button
+              onClick={() => setRailOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 py-1.5 text-[13px] font-semibold text-ink md:hidden"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              영상
+            </button>
+
             <Segmented<ViewMode>
               value={mode}
               onChange={setMode}
@@ -292,7 +312,7 @@ export default function Home() {
 
           {/* Now playing */}
           {selectedVideo && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-6 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-4 py-2.5 sm:px-6">
               <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
                 {selectedVideo.kind === "short" ? "쇼츠" : "영상"}
               </span>
@@ -336,6 +356,34 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {/* ───────────── Video drawer (mobile) ───────────── */}
+      {railOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setRailOpen(false)}
+          />
+          <div className="absolute left-0 top-0 flex h-full w-[86%] max-w-sm flex-col bg-[var(--surface)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <span className="text-[15px] font-bold text-ink">영상 고르기</span>
+              <button
+                onClick={() => setRailOpen(false)}
+                className="rounded-full p-1.5 text-faint hover:bg-[var(--surface-2)] hover:text-ink"
+                aria-label="닫기"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+            {railBody((id) => {
+              setSelectedId(id);
+              setRailOpen(false);
+            })}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
