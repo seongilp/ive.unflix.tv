@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { VideoSummary } from "@/lib/types";
+import { fetchFirstPage } from "@/lib/commentsCache";
 
 function formatDuration(s: number): string {
   if (s <= 0) return "";
@@ -21,16 +22,9 @@ function trim(n: number): string {
   return n.toFixed(1).replace(/\.0$/, "");
 }
 
-// Warm the comment cache (edge/KV) on hover so the click feels instant.
-// Deduped per (video, order) for the page lifetime.
-const prefetched = new Set<string>();
+// Warm the client comment cache on hover so the click is instant.
 function prefetchComments(videoId: string, order: string) {
-  const key = `${videoId}:${order}`;
-  if (prefetched.has(key)) return;
-  prefetched.add(key);
-  fetch(
-    `/api/comments?videoId=${encodeURIComponent(videoId)}&order=${order}`,
-  ).catch(() => prefetched.delete(key));
+  void fetchFirstPage(videoId, order).catch(() => undefined);
 }
 
 export function VideoPicker({

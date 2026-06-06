@@ -8,6 +8,7 @@ import { useComments } from "@/lib/useComments";
 import { LiveChat } from "@/components/LiveChat";
 import { CommentList } from "@/components/CommentList";
 import { VideoPicker, formatCount } from "@/components/VideoPicker";
+import { preloadFirstPages } from "@/lib/commentsCache";
 
 const DEFAULT_HANDLE = "@helloiamwoninicetomeetyou";
 const SPEEDS: StreamSpeed[] = ["slow", "normal", "fast"];
@@ -119,6 +120,22 @@ export default function Home() {
   useEffect(() => {
     void loadChannel(DEFAULT_HANDLE);
   }, [loadChannel]);
+
+  // After load, preload every video's first comment page in the background so
+  // any click renders instantly. Cancels/restarts when the channel or sort
+  // order changes. Starts shortly after so the selected video loads first.
+  useEffect(() => {
+    if (videos.length === 0) return;
+    const ids = videos.map((v) => v.id);
+    let cancel = () => {};
+    const timer = setTimeout(() => {
+      cancel = preloadFirstPages(ids, order, 5);
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+      cancel();
+    };
+  }, [videos, order]);
 
   const onSubmitHandle = (e: React.FormEvent) => {
     e.preventDefault();
