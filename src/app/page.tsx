@@ -63,6 +63,7 @@ export default function Home() {
   const [mode, setMode] = useState<ViewMode>("list");
   const [loop, setLoop] = useState(true);
   const [railOpen, setRailOpen] = useState(false); // mobile video drawer
+  const [railCollapsed, setRailCollapsed] = useState(false); // desktop rail
   const [channelLoading, setChannelLoading] = useState(false);
   const [channelError, setChannelError] = useState<string | null>(null);
 
@@ -171,9 +172,20 @@ export default function Home() {
       <div className="flex flex-col gap-3 border-b border-line px-4 py-3.5">
         <div className="flex items-center justify-between">
           <span className="text-[13px] font-bold text-ink">동영상</span>
-          <span className="num text-[12px] text-faint">
-            {filtered.length}개 · 출시순
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="num text-[12px] text-faint">
+              {filtered.length}개 · 출시순
+            </span>
+            <button
+              onClick={() => setRailCollapsed(true)}
+              title="목록 접기"
+              className="hidden rounded-md p-1 text-faint hover:bg-[var(--surface-2)] hover:text-ink md:inline-flex"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 6l-6 6 6 6" />
+              </svg>
+            </button>
+          </div>
         </div>
         <Segmented<ClipKind>
           size="sm"
@@ -275,10 +287,12 @@ export default function Home() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* ───────────── Video rail (desktop) ───────────── */}
-        <aside className="hidden w-96 shrink-0 flex-col border-r border-line bg-[var(--surface)] md:flex">
-          {railBody(selectVideo)}
-        </aside>
+        {/* ───────────── Video rail (desktop, collapsible) ───────────── */}
+        {!railCollapsed && (
+          <aside className="hidden w-96 shrink-0 flex-col border-r border-line bg-[var(--surface)] md:flex">
+            {railBody(selectVideo)}
+          </aside>
+        )}
 
         {/* ───────────── Stage ───────────── */}
         <section className="relative flex min-w-0 flex-1 flex-col bg-[var(--surface)]">
@@ -294,6 +308,19 @@ export default function Home() {
               </svg>
               영상
             </button>
+
+            {/* Desktop: reopen the collapsed rail */}
+            {railCollapsed && (
+              <button
+                onClick={() => setRailCollapsed(false)}
+                className="hidden items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 py-1.5 text-[13px] font-semibold text-ink md:inline-flex"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                영상 목록
+              </button>
+            )}
 
             <Segmented<ViewMode>
               value={mode}
@@ -385,7 +412,13 @@ export default function Home() {
             ) : !selectedId ? (
               <EmptyState message="영상을 선택하세요" />
             ) : mode === "sync" ? (
-              <SyncView videoId={selectedId} comments={list.comments} />
+              <SyncView
+                videoId={selectedId}
+                comments={list.comments}
+                hasMore={list.hasMore}
+                loading={list.loading}
+                onLoadMore={list.loadMore}
+              />
             ) : mode === "live" ? (
               live.state.error ? (
                 <EmptyState message={live.state.error} tone="error" />

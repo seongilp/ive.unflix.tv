@@ -6,6 +6,10 @@ import type { CommentItem } from "@/lib/types";
 import { firstTimestampSeconds } from "@/lib/timestamps";
 import { useYouTubePlayer } from "@/lib/useYouTubePlayer";
 
+// Keep pulling comment pages until the timeline is rich enough (or we hit caps).
+const ENOUGH_TIMELINE = 40;
+const MAX_AUTO_PAGES = 8;
+
 function fmt(s: number): string {
   const m = Math.floor(s / 60);
   return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -19,11 +23,23 @@ interface Stamped {
 export function SyncView({
   videoId,
   comments,
+  hasMore,
+  loading,
+  onLoadMore,
 }: {
   videoId: string | null;
   comments: CommentItem[];
+  hasMore: boolean;
+  loading: boolean;
+  onLoadMore: () => void;
 }) {
   const { wrapperRef, currentTime, seekTo } = useYouTubePlayer(videoId);
+
+  // Auto-pull more pages until the timeline is rich enough.
+  const autoPagesRef = useRef(0);
+  useEffect(() => {
+    autoPagesRef.current = 0;
+  }, [videoId]);
 
   // Comments that reference a timestamp, ordered along the video timeline.
   const stamped = useMemo<Stamped[]>(() => {
@@ -34,6 +50,18 @@ export function SyncView({
     }
     return out.sort((a, b) => a.seconds - b.seconds);
   }, [comments]);
+
+  // Load additional pages while the timeline is still thin.
+  useEffect(() => {
+    if (loading || !hasMore) return;
+    if (stamped.length >= ENOUGH_TIMELINE) return;
+    if (autoPagesRef.current >= MAX_AUTO_PAGES) return;
+    autoPagesRef.current++;
+    onLoadMore();
+  }, [loading, hasMore, stamped.length, onLoadMore]);
+
+  const gathering =
+    loading && stamped.length < ENOUGH_TIMELINE && hasMore;
 
   // Active = last comment whose timestamp has been reached.
   const activeIndex = useMemo(() => {
@@ -62,7 +90,9 @@ export function SyncView({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex items-center gap-2 border-b border-line px-5 py-2.5 sm:px-6">
           <span className="text-[13px] font-bold text-ink">타임라인 댓글</span>
-          <span className="num text-[12px] text-faint">{stamped.length}개</span>
+          <span className="num text-[12px] text-faint">
+            {stamped.length}개{gathering ? " · 더 모으는 중…" : ""}
+          </span>
         </div>
 
         {stamped.length === 0 ? (
