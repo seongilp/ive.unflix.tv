@@ -344,15 +344,18 @@ export default function Home() {
               ]}
             />
 
-            <Segmented<"relevance" | "time">
-              size="sm"
-              value={order}
-              onChange={setOrder}
-              options={[
-                { value: "relevance", label: "인기순" },
-                { value: "time", label: "최신순" },
-              ]}
-            />
+            {/* 전당은 항상 좋아요순 TOP이라 인기/최신 토글이 의미가 없다. */}
+            {mode !== "hall" && (
+              <Segmented<"relevance" | "time">
+                size="sm"
+                value={order}
+                onChange={setOrder}
+                options={[
+                  { value: "relevance", label: "인기순" },
+                  { value: "time", label: "최신순" },
+                ]}
+              />
+            )}
 
             {mode === "live" && (
               <div className="flex items-center gap-2 border-l border-line pl-3">
@@ -410,7 +413,7 @@ export default function Home() {
           {/* Surface */}
           <div className="relative min-h-0 flex-1">
             {mode === "hall" ? (
-              <HallOfFame videos={videos} order={order} onJump={jumpToVideo} />
+              <HallOfFame videos={videos} onJump={jumpToVideo} />
             ) : mode === "search" ? (
               <SearchView
                 videos={videos}

@@ -10,14 +10,13 @@ const TOP_N = 100;
 // Channel-wide best comments: every preloaded comment ranked by likes.
 export function HallOfFame({
   videos,
-  order,
   onJump,
 }: {
   videos: VideoSummary[];
-  order: "relevance" | "time";
   onJump: (videoId: string) => void;
 }) {
-  const all = useAllComments(order);
+  // 전당은 좋아요순 TOP이라 항상 인기순 첫 페이지에서 수집한다.
+  const all = useAllComments("relevance");
   const videoMap = useMemo(
     () => new Map(videos.map((v) => [v.id, v])),
     [videos],
