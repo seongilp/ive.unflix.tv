@@ -13,7 +13,13 @@ import { SearchView } from "@/components/SearchView";
 import { SyncView } from "@/components/SyncView";
 import { preloadFirstPages } from "@/lib/commentsCache";
 
-const DEFAULT_HANDLE = "@helloiamwoninicetomeetyou";
+// Quick-pick channels shown in the header. The API resolves both @handles and
+// raw channel ids (UC…), so the official channel is keyed by its id.
+const PRESET_CHANNELS = [
+  { label: "원이", handle: "@helloiamwoninicetomeetyou" },
+  { label: "리센느 공식", handle: "UCtKtCiaWRz-d3EZn2xd1mdA" },
+] as const;
+const DEFAULT_HANDLE = PRESET_CHANNELS[0].handle;
 const SPEEDS: StreamSpeed[] = ["slow", "normal", "fast"];
 
 type ViewMode = "list" | "live" | "sync" | "hall" | "search";
@@ -54,7 +60,8 @@ function Segmented<T extends string>({
 }
 
 export default function Home() {
-  const [handleInput, setHandleInput] = useState(DEFAULT_HANDLE);
+  const [handleInput, setHandleInput] = useState<string>(DEFAULT_HANDLE);
+  const [activeHandle, setActiveHandle] = useState<string>(DEFAULT_HANDLE);
   const [channel, setChannel] = useState<ChannelInfo | null>(null);
   const [videos, setVideos] = useState<VideoSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -99,6 +106,7 @@ export default function Home() {
   });
 
   const loadChannel = useCallback(async (handle: string) => {
+    setActiveHandle(handle);
     setChannelLoading(true);
     setChannelError(null);
     try {
@@ -147,6 +155,11 @@ export default function Home() {
   const onSubmitHandle = (e: React.FormEvent) => {
     e.preventDefault();
     if (handleInput.trim()) void loadChannel(handleInput.trim());
+  };
+
+  const loadPreset = (handle: string) => {
+    setHandleInput(handle);
+    void loadChannel(handle);
   };
 
   const selectedVideo = videos.find((v) => v.id === selectedId) ?? null;
@@ -243,27 +256,36 @@ export default function Home() {
           </span>
         </div>
 
-        {/* Channel chip — hidden on mobile to keep the header one line. */}
-        {channel && (
-          <div className="hidden shrink-0 items-center gap-2.5 border-l border-line pl-5 md:flex">
-            {channel.thumbnail && (
-              <Image
-                src={channel.thumbnail}
-                alt=""
-                width={32}
-                height={32}
-                unoptimized
-                className="h-8 w-8 rounded-full"
-              />
-            )}
-            <div className="leading-tight">
-              <div className="max-w-[36ch] truncate text-[14px] font-semibold text-ink">
-                {channel.title}
-              </div>
-              <div className="text-[12px] text-faint">{channel.handle}</div>
-            </div>
-          </div>
-        )}
+        {/* Channel quick-pick — hidden on mobile to keep the header one line. */}
+        <div className="hidden shrink-0 items-center gap-1 border-l border-line pl-5 md:flex">
+          {PRESET_CHANNELS.map((c) => {
+            const active = c.handle === activeHandle;
+            return (
+              <button
+                key={c.handle}
+                onClick={() => loadPreset(c.handle)}
+                disabled={channelLoading}
+                className={`flex items-center gap-2 rounded-full py-1.5 pr-3.5 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+                  active
+                    ? "bg-accent-soft pl-1.5 text-accent"
+                    : "pl-3.5 text-muted hover:bg-[var(--surface-2)] hover:text-ink"
+                }`}
+              >
+                {active && channel?.thumbnail && (
+                  <Image
+                    src={channel.thumbnail}
+                    alt=""
+                    width={24}
+                    height={24}
+                    unoptimized
+                    className="h-6 w-6 rounded-full"
+                  />
+                )}
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
 
         <form
           onSubmit={onSubmitHandle}
