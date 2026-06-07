@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useRef } from "react";
 import type { CommentItem } from "@/lib/types";
 import { CommentText } from "./CommentText";
 
@@ -78,8 +79,15 @@ export function CommentList({
   onLoadMore: () => void;
   videoId: string | null;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // 영상이 바뀌면 댓글 목록을 가장 위로 되돌린다
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [videoId]);
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div ref={scrollRef} className="h-full overflow-y-auto">
       <ul className="divide-y divide-[var(--color-line)]">
         {comments.map((c, i) => (
           <CommentRow key={c.id} comment={c} rank={i + 1} videoId={videoId} />
