@@ -56,7 +56,7 @@ export function VideoPicker({
               onClick={() => onSelect(v.id)}
               onMouseEnter={() => prefetchComments(v.id, order)}
               onFocus={() => prefetchComments(v.id, order)}
-              className={`group flex w-full items-start gap-3 rounded-2xl p-2.5 text-left transition-colors ${
+              className={`group flex w-full items-start gap-3 rounded-2xl p-2.5 text-left outline-none transition-colors ${
                 active ? "bg-accent" : "hover:bg-[var(--surface-2)]"
               }`}
             >
