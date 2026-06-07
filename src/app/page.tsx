@@ -181,6 +181,27 @@ export default function Home() {
     setMode((m) => (CHANNEL_VIEWS.includes(m) ? "list" : m));
   };
 
+  // Step the rail selection by ±1 within the current 영상/쇼츠 filter.
+  const moveSelection = (delta: number) => {
+    if (filtered.length === 0) return;
+    const idx = filtered.findIndex((v) => v.id === selectedId);
+    const next =
+      idx < 0 ? 0 : Math.min(filtered.length - 1, Math.max(0, idx + delta));
+    const target = filtered[next];
+    if (target && target.id !== selectedId) selectVideo(target.id);
+  };
+
+  // ↑/↓ moves to the prev/next video instead of scrolling the rail.
+  const onRailKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      moveSelection(1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      moveSelection(-1);
+    }
+  };
+
   // Jump to a video from hall/search (also align the 영상/쇼츠 filter to it).
   const jumpToVideo = (id: string) => {
     const v = videos.find((x) => x.id === id);
@@ -220,7 +241,11 @@ export default function Home() {
           ]}
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto outline-none"
+        tabIndex={0}
+        onKeyDown={onRailKeyDown}
+      >
         {filtered.length > 0 ? (
           <VideoPicker
             videos={filtered}

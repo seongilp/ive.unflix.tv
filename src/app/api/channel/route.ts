@@ -77,10 +77,15 @@ async function compute(
   handle: string,
   kvKey: string,
   kv?: ShortsCache,
+  // Off on the request path: skip the per-video Shorts redirect probes (the slow
+  // part of a cold load) and classify by duration; a background pass refines.
+  probeShorts = true,
 ): Promise<ChannelPayload> {
   try {
     const channel = await resolveChannel(handle);
-    const videos = await listVideos(channel.uploadsPlaylistId, 300, kv);
+    const videos = await listVideos(channel.uploadsPlaylistId, 300, kv, {
+      probeShorts,
+    });
     const data: ChannelPayload = { channel, videos };
     if (kv) {
       const entry: CacheEntry = { data, ts: Date.now() };
@@ -185,8 +190,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const data = await compute(handle, kvKey, kv);
-    return respond(data, request, edge);
+    // Cold miss: respond fast (no Shorts probes), then refine the Shorts
+    // classification accurately in the background so the next load is correct.
+    // Skip the edge write here so a colo never pins the provisional split.
+    const data = await compute(handle, kvKey, kv, false);
+    if (kv) bg(compute(handle, kvKey, kv, true).catch(() => {}));
+    return respond(data, request, kv ? undefined : edge);
   } catch (err) {
     if (err instanceof YoutubeError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

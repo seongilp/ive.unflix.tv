@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import type { VideoSummary } from "@/lib/types";
 import { fetchFirstPage } from "@/lib/commentsCache";
@@ -38,6 +39,12 @@ export function VideoPicker({
   order: "relevance" | "time";
   onSelect: (id: string) => void;
 }) {
+  // Keep the selected row visible (e.g. when ↑/↓ moves past the viewport edge).
+  const activeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+
   return (
     <ul className="flex flex-col gap-1 p-2">
       {videos.map((v, i) => {
@@ -45,6 +52,7 @@ export function VideoPicker({
         return (
           <li key={v.id}>
             <button
+              ref={active ? activeRef : undefined}
               onClick={() => onSelect(v.id)}
               onMouseEnter={() => prefetchComments(v.id, order)}
               onFocus={() => prefetchComments(v.id, order)}

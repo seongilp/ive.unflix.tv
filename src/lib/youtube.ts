@@ -157,6 +157,7 @@ export async function listVideos(
   uploadsPlaylistId: string,
   cap = 300,
   cache?: ShortsCache,
+  opts?: { probeShorts?: boolean },
 ): Promise<VideoSummary[]> {
   const items: Array<{
     id: string;
@@ -211,6 +212,7 @@ export async function listVideos(
     durations,
     cache,
     `shorts:v1:${uploadsPlaylistId}`,
+    opts?.probeShorts ?? true,
   );
 
   const videos: VideoSummary[] = items.map((v) => {
@@ -264,6 +266,10 @@ async function classifyShorts(
   durations: Map<string, number>,
   cache?: ShortsCache,
   cacheKey?: string,
+  // When false, skip the network probes entirely and classify unknowns by the
+  // (instant) duration heuristic. Used on the latency-sensitive request path so
+  // a cold load returns immediately; an accurate probe pass refines KV after.
+  probe = true,
 ): Promise<Map<string, boolean>> {
   const out = new Map<string, boolean>();
 
@@ -285,9 +291,11 @@ async function classifyShorts(
   }
 
   // 2) Probe up to the cap; the overflow uses the duration fallback this round
-  //    (not cached, so it gets probed accurately on a later request).
-  const probeNow = unknown.slice(0, MAX_NEW_PROBES);
-  const overflow = unknown.slice(MAX_NEW_PROBES);
+  //    (not cached, so it gets probed accurately on a later request). With
+  //    probing off, every unknown takes the duration fallback and nothing is
+  //    probed/persisted.
+  const probeNow = probe ? unknown.slice(0, MAX_NEW_PROBES) : [];
+  const overflow = probe ? unknown.slice(MAX_NEW_PROBES) : unknown;
 
   const CONCURRENCY = 16;
   let cursor = 0;
