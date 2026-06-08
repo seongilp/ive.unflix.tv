@@ -1,0 +1,119 @@
+name: Claude Issue to PR
+
+# `claude` 라벨이 붙은 이슈를 Claude가 구현해 PR을 생성한다.
+# 머지는 사람이 직접 한다(자동 머지 없음).
+# 각 단계(시작 / 성공 / 실패)마다 텔레그램으로 알림을 보낸다.
+
+on:
+  issues:
+    types: [labeled]
+
+# 같은 이슈에 대한 중복 실행 방지(직렬화)
+concurrency:
+  group: claude-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # 'claude' 라벨이 붙었을 때만 동작
+    if: github.event.label.name == 'claude'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 브랜치 생성 / 커밋 / 푸시
+      pull-requests: write # PR 생성
+      issues: write # 이슈 코멘트
+      id-token: write # OAuth 토큰 교환
+      actions: read # CI 결과 조회
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 1단계: 작업 시작 알림
+      - name: Telegram - 작업 시작
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MSG="🤖 <b>Claude 작업 시작</b>%0A%0A이슈 #${ISSUE_NUMBER}: ${ISSUE_TITLE}%0A${ISSUE_URL}%0A%0A▶️ 실행 로그: ${RUN_URL}"
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data "text=${MSG}" >/dev/null
+
+      # 2단계: Claude가 이슈를 구현하고 PR 생성
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            너는 이 저장소의 자동화 구현 에이전트다. GitHub 이슈를 읽고 구현한 뒤 PR을 만든다.
+
+            대상 이슈: #${{ github.event.issue.number }}
+            제목: ${{ github.event.issue.title }}
+
+            진행 순서:
+            1. 이슈 본문과 코멘트를 읽고 요구사항을 파악한다.
+            2. 이 저장소는 Next.js 기반이다. 작업 전 반드시 AGENTS.md 와 node_modules/next/dist/docs/ 의
+               관련 가이드를 먼저 확인하고, 코드베이스 컨벤션(주변 코드 스타일, 네이밍)을 따른다.
+            3. 변경사항을 구현한다. 가능하면 빌드/타입체크가 통과하는지 확인한다.
+            4. `claude/issue-${{ github.event.issue.number }}` 형태의 새 브랜치에 커밋하고 푸시한다.
+            5. `gh pr create` 로 PR을 생성한다. PR 본문에는 변경 요약과 함께 반드시
+               "Closes #${{ github.event.issue.number }}" 를 포함시킨다. base 브랜치는 main 이다.
+            6. 절대 PR을 머지하지 않는다. 머지는 사람이 검토 후 직접 한다.
+
+            요구사항이 모호하면 추측해서 임의로 큰 변경을 만들지 말고, 이슈에 코멘트로
+            확인이 필요한 점을 남기고 최소한의 안전한 변경만 한다.
+          claude_args: |
+            --max-turns 30
+            --allowed-tools "Edit,Write,Read,Glob,Grep,Bash"
+
+      # 3단계: 성공 알림(생성된 PR 링크 포함)
+      - name: Telegram - 성공
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 이슈를 참조(Closes #N)하는 가장 최근 PR을 찾는다.
+          PR_URL=$(gh pr list --repo "$REPO" --state open \
+            --search "${ISSUE_NUMBER} in:body" \
+            --json url,createdAt --jq 'sort_by(.createdAt) | last | .url // empty' || true)
+          if [ -n "$PR_URL" ]; then
+            BODY="✅ <b>Claude 구현 완료</b>%0A%0A이슈 #${ISSUE_NUMBER}: ${ISSUE_TITLE}%0A%0A🔗 PR(검토 후 직접 머지하세요):%0A${PR_URL}"
+          else
+            BODY="✅ <b>Claude 작업 완료</b>%0A%0A이슈 #${ISSUE_NUMBER}: ${ISSUE_TITLE}%0A%0A⚠️ 연결된 PR을 자동으로 찾지 못했습니다. 저장소의 PR 목록을 확인하세요."
+          fi
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data "text=${BODY}" >/dev/null
+
+      # 3단계: 실패 알림
+      - name: Telegram - 실패
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MSG="❌ <b>Claude 작업 실패</b>%0A%0A이슈 #${ISSUE_NUMBER}: ${ISSUE_TITLE}%0A%0A🔍 실패 로그를 확인하세요:%0A${RUN_URL}"
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data "text=${MSG}" >/dev/null

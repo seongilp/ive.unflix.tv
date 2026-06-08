@@ -1,0 +1,32 @@
+name: Claude PR Merged Notify
+
+# Claude가 만든 PR(claude/ 브랜치)이 머지되면 텔레그램으로 알린다.
+# 머지 자체는 사람이 수동으로 한다 — 이 워크플로는 알림만 담당한다.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  notify:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'claude/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Telegram - 머지 완료
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        run: |
+          MSG="🎉 <b>PR 머지 완료</b>%0A%0APR #${PR_NUMBER}: ${PR_TITLE}%0A머지: @${MERGED_BY}%0A${PR_URL}"
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data "text=${MSG}" >/dev/null
