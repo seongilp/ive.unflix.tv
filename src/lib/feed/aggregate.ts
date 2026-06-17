@@ -10,6 +10,8 @@ export function mergeFeedItems(
   limit = FEED_LIMIT,
 ): FeedItem[] {
   const byId = new Map<string, FeedItem>();
+  // Dedup keeps the FIRST occurrence in stable source order (this runs before
+  // the sort), so cross-list duplicates retain the earliest-seen copy.
   for (const list of lists) {
     for (const it of list) {
       if (!byId.has(it.id)) byId.set(it.id, it);
