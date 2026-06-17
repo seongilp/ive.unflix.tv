@@ -29,4 +29,18 @@ describe("normalizeDc", () => {
     expect(item.url).toBe("https://gall.dcinside.com/mgallery/board/view/?id=rescene&no=12345");
     expect(item.publishedAt).toBe(Date.parse("2026-06-17T12:34:56+09:00"));
   });
+
+  it("tolerates surrounding whitespace in the gall_date title attr", () => {
+    const padded = `
+<table class="gall_list"><tbody>
+  <tr class="ub-content us-post" data-no="67890" data-type="icon_txt">
+    <td class="gall_num">67890</td>
+    <td class="gall_tit ub-word"><a href="/mgallery/board/view/?id=rescene&no=67890">패딩된 날짜</a></td>
+    <td class="gall_writer ub-writer" data-nick="팬2"></td>
+    <td class="gall_date" title=" 2026-06-17 12:34:56 ">06.17</td>
+  </tr>
+</tbody></table>`;
+    const [item] = normalizeDc(padded, "rescene");
+    expect(item.publishedAt).toBe(Date.parse("2026-06-17T12:34:56+09:00"));
+  });
 });

@@ -22,7 +22,7 @@ export function normalizeDc(html: string, galleryId: string): FeedItem[] {
     const href = link.getAttribute("href") ?? "";
     const url = href.startsWith("http") ? href : `${ORIGIN}${href}`;
     const dateEl = row.querySelector("td.gall_date");
-    const dateStr = dateEl?.getAttribute("title") ?? "";
+    const dateStr = (dateEl?.getAttribute("title") ?? "").trim();
     items.push({
       id: `dc:${galleryId}:${no}`,
       source: "dc" as const,
