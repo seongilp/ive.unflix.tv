@@ -2,6 +2,7 @@ import type { FeedSource } from "./types";
 
 // Keyword set driving the broad sources (네이버뉴스). DC is already
 // group-specific. Append member names here later as needed.
+// Korean + romanized terms maximize search breadth across sources.
 export const KEYWORDS = ["리센느", "RESCENE"];
 
 // Sources wired AND enabled in v1. 스레드/더쿠/인스티즈 are deferred.
@@ -23,7 +24,8 @@ export const FEED_KV_KEY = "feed:v1";
 export const FEED_FRESH_MS = 5 * 60 * 1000;
 export const FEED_KV_TTL_SECONDS = 24 * 60 * 60;
 export const FEED_REVALIDATE_LOCK_TTL_SECONDS = 90;
-export const FEED_EDGE_MAXAGE = 60;
+// `s-maxage` value (seconds) for the /api/feed Cache-Control header.
+export const FEED_EDGE_MAXAGE_SECONDS = 60;
 
 // Display labels (Korean) for every source — UI shows labels for ENABLED_SOURCES.
 export const SOURCE_LABELS: Record<FeedSource, string> = {
