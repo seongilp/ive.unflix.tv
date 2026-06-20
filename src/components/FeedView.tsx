@@ -6,6 +6,16 @@ import { ENABLED_SOURCES, SOURCE_LABELS } from "@/lib/feed/config";
 
 type Filter = "all" | FeedSource;
 
+// Instagram's CDN blocks cross-origin <img> loads (Cross-Origin-Resource-Policy:
+// same-origin) AND 403s datacenter IPs (so our own Worker can't proxy it).
+// images.weserv.nl fetches from non-blocked IPs and re-serves with permissive
+// CORS/CORP — and resizes to a thumbnail while it's at it.
+function proxiedThumb(url: string): string {
+  return /cdninstagram\.com|fbcdn\.net/.test(url)
+    ? `https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=160&h=160&fit=cover`
+    : url;
+}
+
 // "3분 전" / "2시간 전" / "6월 17일" style relative time.
 function relativeTime(ts: number): string {
   if (!ts) return "";
@@ -119,8 +129,12 @@ export function FeedView() {
                   {item.thumbnail && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
-                      src={item.thumbnail}
+                      src={proxiedThumb(item.thumbnail)}
                       alt=""
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
                       className="h-16 w-16 shrink-0 rounded-lg object-cover"
                     />
                   )}
