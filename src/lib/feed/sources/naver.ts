@@ -52,17 +52,20 @@ async function fetchOne(
   return normalizeNaver(data.items ?? []);
 }
 
-// Disabled (returns []) when creds are missing. One request per keyword, merged.
+// Disabled (returns []) when creds are missing. One request per keyword.
 export async function fetchItems(keywords: string[] = KEYWORDS): Promise<FeedItem[]> {
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
   if (!clientId || !clientSecret) return [];
-  try {
-    const results = await Promise.allSettled(
-      keywords.map((kw) => fetchOne(kw, clientId, clientSecret)),
-    );
-    return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-  } catch {
-    return [];
+  // Naver throttles *concurrent* requests from one app to an empty 200
+  // (total:0), so fetch keywords sequentially rather than in parallel.
+  const items: FeedItem[] = [];
+  for (const kw of keywords) {
+    try {
+      items.push(...(await fetchOne(kw, clientId, clientSecret)));
+    } catch {
+      // one keyword failing shouldn't drop the others
+    }
   }
+  return items;
 }
