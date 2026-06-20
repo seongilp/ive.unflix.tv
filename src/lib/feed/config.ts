@@ -12,10 +12,10 @@ export const FEED_LIMIT = 200;
 export const NAVER_PER_KEYWORD = 30;
 export const IG_MEDIA_LIMIT = 25;
 
-// DC RESCENE gallery. VERIFY the real id/type at gall.dcinside.com before
-// production. "mgallery" = minor gallery (board path /mgallery/board/...),
+// DC 리센느 마이너 갤러리 (verified: gall.dcinside.com/mgallery/board/lists/?id=rescene1).
+// "mgallery" = minor gallery (board path /mgallery/board/...),
 // "board" = regular gallery (/board/...).
-export const DC_GALLERY_ID = "rescene";
+export const DC_GALLERY_ID = "rescene1";
 export const DC_GALLERY_TYPE: "mgallery" | "board" = "mgallery";
 export const DC_LIST_COUNT = 50;
 
