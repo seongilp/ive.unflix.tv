@@ -1,126 +1,74 @@
 import type { FeedItem } from "../types";
 import { truncate } from "../html";
-import { KEYWORDS, IG_MEDIA_LIMIT, IG_OFFICIAL_USERNAME } from "../config";
+import { IG_OFFICIAL_USERNAME, IG_MEDIA_LIMIT } from "../config";
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+// Public web app id instagram.com itself sends on its logged-out web API.
+// No user token required — this reads a public profile's recent posts.
+const IG_APP_ID = "936619743392459";
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-interface IgMedia {
+interface IgNode {
   id: string;
-  caption?: string;
-  media_type: string;
-  media_url?: string;
-  thumbnail_url?: string;
-  permalink: string;
-  timestamp: string;
+  shortcode: string;
+  display_url?: string;
+  thumbnail_src?: string;
+  is_video?: boolean;
+  taken_at_timestamp: number;
+  edge_media_to_caption?: { edges?: { node?: { text?: string } }[] };
 }
 
-// `author` is shown verbatim on the card: the official username for account
-// media (e.g. "rescene_official") or the matched "#hashtag" for hashtag media.
-export function normalizeInstagram(media: IgMedia[], author: string): FeedItem[] {
-  return media.map((m) => {
-    const caption = (m.caption ?? "").trim();
+interface IgWebProfile {
+  data?: {
+    user?: {
+      edge_owner_to_timeline_media?: { edges?: { node: IgNode }[] };
+    };
+  };
+}
+
+export function normalizeIgWebProfile(
+  json: IgWebProfile,
+  username: string,
+): FeedItem[] {
+  const edges = json.data?.user?.edge_owner_to_timeline_media?.edges ?? [];
+  return edges.map(({ node: n }) => {
+    const caption = (n.edge_media_to_caption?.edges?.[0]?.node?.text ?? "").trim();
     const firstLine = caption.split("\n")[0]?.trim() ?? "";
-    // Instagram captions keep newlines; collapse for the snippet.
     const flat = caption.replace(/\s+/g, " ").trim();
     return {
-      id: `instagram:${m.id}`,
+      id: `instagram:${n.id}`,
       source: "instagram" as const,
-      author,
+      author: username,
       title: truncate(firstLine || "(사진)", 120),
       snippet: truncate(flat, 200),
-      url: m.permalink,
-      // Prefer the dedicated poster thumbnail (set on videos); for an image
-      // that's the media_url; a video with no thumbnail has no usable preview.
-      thumbnail: m.thumbnail_url || (m.media_type === "VIDEO" ? undefined : m.media_url),
-      publishedAt: Date.parse(m.timestamp) || 0,
+      url: `https://www.instagram.com/p/${n.shortcode}/`,
+      // display_url is the poster image for both photos and videos.
+      thumbnail: n.display_url || n.thumbnail_src,
+      publishedAt: (n.taken_at_timestamp || 0) * 1000,
     };
   });
 }
 
-// Resolve the IG Business user id required by the discovery/hashtag endpoints.
-// Prefers an explicit env id; otherwise discovers it from the token's FB Pages.
-async function resolveUserId(token: string): Promise<string | null> {
-  if (process.env.INSTAGRAM_USER_ID) return process.env.INSTAGRAM_USER_ID;
+// Reads the official account's public posts via Instagram's logged-out web API
+// — no token. Best-effort: Instagram may block datacenter IPs, in which case
+// this returns [] and the rest of the feed is unaffected.
+export async function fetchItems(): Promise<FeedItem[]> {
   try {
-    const res = await fetch(
-      `${GRAPH}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(token)}`,
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      data?: { instagram_business_account?: { id: string } }[];
-    };
-    for (const page of data.data ?? []) {
-      const id = page.instagram_business_account?.id;
-      if (id) return id;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// Pull a public Business/Creator account's recent media by username via the
-// Business Discovery API (the sanctioned way to read another account's posts).
-async function fetchBusinessDiscovery(
-  userId: string,
-  token: string,
-  username: string,
-): Promise<FeedItem[]> {
-  const fields =
-    `business_discovery.username(${username})` +
-    `{media.limit(${IG_MEDIA_LIMIT})` +
-    `{id,caption,media_type,media_url,thumbnail_url,permalink,timestamp}}`;
-  const url =
-    `${GRAPH}/${userId}?fields=${encodeURIComponent(fields)}` +
-    `&access_token=${encodeURIComponent(token)}`;
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const data = (await res.json()) as {
-    business_discovery?: { media?: { data?: IgMedia[] } };
-  };
-  return normalizeInstagram(data.business_discovery?.media?.data ?? [], username);
-}
-
-async function fetchHashtag(
-  keyword: string,
-  userId: string,
-  token: string,
-): Promise<FeedItem[]> {
-  const searchUrl =
-    `${GRAPH}/ig_hashtag_search?user_id=${userId}` +
-    `&q=${encodeURIComponent(keyword)}&access_token=${encodeURIComponent(token)}`;
-  const sres = await fetch(searchUrl);
-  if (!sres.ok) return [];
-  const sdata = (await sres.json()) as { data?: { id: string }[] };
-  const hashtagId = sdata.data?.[0]?.id;
-  if (!hashtagId) return [];
-
-  const mediaUrl =
-    `${GRAPH}/${hashtagId}/recent_media?user_id=${userId}` +
-    `&fields=id,caption,media_type,media_url,permalink,timestamp` +
-    `&limit=${IG_MEDIA_LIMIT}&access_token=${encodeURIComponent(token)}`;
-  const mres = await fetch(mediaUrl);
-  if (!mres.ok) return [];
-  const mdata = (await mres.json()) as { data?: IgMedia[] };
-  return normalizeInstagram(mdata.data ?? [], `#${keyword}`);
-}
-
-// Instagram via the Graph API: the official account's media (Business
-// Discovery) plus hashtag search. Disabled (returns []) without a Graph token
-// or when the business user id can't be resolved. Each call is independent —
-// one failing never blanks the others (merge/dedupe happens upstream).
-export async function fetchItems(keywords: string[] = KEYWORDS): Promise<FeedItem[]> {
-  const token = process.env.INSTAGRAM_GRAPH_TOKEN;
-  if (!token) return [];
-  try {
-    const userId = await resolveUserId(token);
-    if (!userId) return [];
-    const tasks = [
-      fetchBusinessDiscovery(userId, token, IG_OFFICIAL_USERNAME),
-      ...keywords.map((kw) => fetchHashtag(kw, userId, token)),
-    ];
-    const results = await Promise.allSettled(tasks);
-    return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    const url =
+      `https://www.instagram.com/api/v1/users/web_profile_info/` +
+      `?username=${encodeURIComponent(IG_OFFICIAL_USERNAME)}`;
+    const res = await fetch(url, {
+      headers: {
+        "x-ig-app-id": IG_APP_ID,
+        "User-Agent": UA,
+        Referer: `https://www.instagram.com/${IG_OFFICIAL_USERNAME}/`,
+        "Accept-Language": "ko-KR,ko;q=0.9",
+      },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as IgWebProfile;
+    return normalizeIgWebProfile(json, IG_OFFICIAL_USERNAME).slice(0, IG_MEDIA_LIMIT);
   } catch {
     return [];
   }
