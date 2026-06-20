@@ -1,6 +1,7 @@
 import type { FeedItem, FeedSource } from "./types";
 import { ENABLED_SOURCES, FEED_LIMIT } from "./config";
 import * as naver from "./sources/naver";
+import * as daum from "./sources/daum";
 import * as dc from "./sources/dc";
 import * as instagram from "./sources/instagram";
 
@@ -28,6 +29,7 @@ interface Adapter {
 
 const ADAPTERS: Partial<Record<FeedSource, Adapter>> = {
   naver,
+  daum,
   dc,
   instagram,
 };

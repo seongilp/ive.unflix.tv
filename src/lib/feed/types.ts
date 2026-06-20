@@ -2,6 +2,7 @@
 // so the UI never branches per platform.
 export type FeedSource =
   | "naver"
+  | "daum"
   | "dc"
   | "instagram"
   | "threads"

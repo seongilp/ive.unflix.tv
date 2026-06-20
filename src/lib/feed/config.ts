@@ -5,11 +5,13 @@ import type { FeedSource } from "./types";
 // Korean + romanized terms maximize search breadth across sources.
 export const KEYWORDS = ["리센느", "RESCENE"];
 
-// Sources wired AND enabled in v1. 스레드/더쿠/인스티즈 are deferred.
-export const ENABLED_SOURCES: FeedSource[] = ["naver", "dc", "instagram"];
+// Sources wired AND enabled. 스레드/더쿠/인스티즈 are deferred.
+export const ENABLED_SOURCES: FeedSource[] = ["naver", "daum", "dc", "instagram"];
 
 export const FEED_LIMIT = 200;
 export const NAVER_PER_KEYWORD = 30;
+// Daum web search (Kakao Search API) results per keyword.
+export const DAUM_PER_KEYWORD = 25;
 export const IG_MEDIA_LIMIT = 25;
 // RESCENE official Instagram account, pulled via the Business Discovery API.
 export const IG_OFFICIAL_USERNAME = "rescene_official";
@@ -32,6 +34,7 @@ export const FEED_EDGE_MAXAGE_SECONDS = 60;
 // Display labels (Korean) for every source — UI shows labels for ENABLED_SOURCES.
 export const SOURCE_LABELS: Record<FeedSource, string> = {
   naver: "네이버뉴스",
+  daum: "다음",
   dc: "DC",
   instagram: "인스타",
   threads: "스레드",
