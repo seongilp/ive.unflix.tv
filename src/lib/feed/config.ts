@@ -11,6 +11,8 @@ export const ENABLED_SOURCES: FeedSource[] = ["naver", "dc", "instagram"];
 export const FEED_LIMIT = 200;
 export const NAVER_PER_KEYWORD = 30;
 export const IG_MEDIA_LIMIT = 25;
+// RESCENE official Instagram account, pulled via the Business Discovery API.
+export const IG_OFFICIAL_USERNAME = "rescene_official";
 
 // DC 리센느 마이너 갤러리 (verified: gall.dcinside.com/mgallery/board/lists/?id=rescene1).
 // "mgallery" = minor gallery (board path /mgallery/board/...),

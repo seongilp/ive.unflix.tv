@@ -13,8 +13,8 @@ const sample = [
 ];
 
 describe("normalizeInstagram", () => {
-  it("maps hashtag media to a FeedItem; author is the matched hashtag", () => {
-    const [item] = normalizeInstagram(sample, "리센느");
+  it("maps media to a FeedItem with the author shown verbatim (hashtag)", () => {
+    const [item] = normalizeInstagram(sample, "#리센느");
     expect(item.id).toBe("instagram:178");
     expect(item.source).toBe("instagram");
     expect(item.author).toBe("#리센느");
@@ -25,16 +25,29 @@ describe("normalizeInstagram", () => {
     expect(item.publishedAt).toBe(Date.parse("2026-06-17T03:00:00+0000"));
   });
 
+  it("uses the official username verbatim as author (business discovery)", () => {
+    const [item] = normalizeInstagram(sample, "rescene_official");
+    expect(item.author).toBe("rescene_official");
+  });
+
   it("falls back to (사진) when there is no caption", () => {
     const [item] = normalizeInstagram([{ ...sample[0], caption: undefined }], "RESCENE");
     expect(item.title).toBe("(사진)");
   });
 
-  it("omits thumbnail for video media", () => {
+  it("omits thumbnail for video media with no poster", () => {
     const [item] = normalizeInstagram(
-      [{ ...sample[0], media_type: "VIDEO" }],
-      "리센느",
+      [{ ...sample[0], media_type: "VIDEO", media_url: undefined }],
+      "#리센느",
     );
     expect(item.thumbnail).toBeUndefined();
+  });
+
+  it("uses thumbnail_url as the poster for video media", () => {
+    const [item] = normalizeInstagram(
+      [{ ...sample[0], media_type: "VIDEO", thumbnail_url: "https://cdn.example.com/poster.jpg" }],
+      "rescene_official",
+    );
+    expect(item.thumbnail).toBe("https://cdn.example.com/poster.jpg");
   });
 });
