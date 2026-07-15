@@ -50,7 +50,7 @@ export function SearchView({
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="댓글 검색 (예: 미나미, 갸루, 곰…)"
+          placeholder="댓글 검색 (예: 원영, 유진, 직캠…)"
           className="w-full rounded-full border border-line bg-[var(--surface-2)] px-4 py-2.5 text-[14px] text-ink outline-none transition-colors placeholder:text-faint focus:border-accent focus:bg-white"
         />
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export function SearchView({
                 : "bg-[var(--surface-2)] text-muted hover:text-ink"
             }`}
           >
-            원이 본인 댓글만
+            {channelTitle ? `${channelTitle} 본인 댓글만` : "채널 본인 댓글만"}
           </button>
           <span className="num ml-auto text-[12px] text-faint">
             {q || ownerOnly ? `${results.length}개` : `${all.length}개 중 검색`}

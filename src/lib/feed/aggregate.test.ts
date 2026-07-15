@@ -9,9 +9,13 @@ vi.mock("./sources/naver");
 vi.mock("./sources/dc");
 vi.mock("./sources/instagram");
 
-const item = (id: string, publishedAt: number): FeedItem => ({
+const item = (
+  id: string,
+  publishedAt: number,
+  source: FeedItem["source"] = "naver",
+): FeedItem => ({
   id,
-  source: "naver",
+  source,
   author: "a",
   title: "t",
   snippet: "s",
@@ -34,6 +38,18 @@ describe("mergeFeedItems", () => {
   it("caps to the limit", () => {
     const many = Array.from({ length: 5 }, (_, i) => item(`x${i}`, i));
     expect(mergeFeedItems([many], 3)).toHaveLength(3);
+  });
+
+  it("caps per source, so news volume can't crowd out old Instagram posts", () => {
+    // 5 fresh news items vs 2 much older instagram posts, per-source cap 3.
+    const news = Array.from({ length: 5 }, (_, i) => item(`n${i}`, 100 + i));
+    const ig = [item("i1", 1, "instagram"), item("i2", 2, "instagram")];
+    const merged = mergeFeedItems([news, ig], 10, 3);
+    expect(merged.filter((i) => i.source === "naver")).toHaveLength(3);
+    expect(merged.filter((i) => i.source === "instagram")).toHaveLength(2);
+    // still globally newest-first
+    expect(merged[0].id).toBe("n4");
+    expect(merged[merged.length - 1].id).toBe("i1");
   });
 });
 

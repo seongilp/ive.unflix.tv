@@ -15,7 +15,7 @@ const profile = {
               thumbnail_src: "https://cdn.example.com/t.jpg",
               taken_at_timestamp: 1781859605,
               edge_media_to_caption: {
-                edges: [{ node: { text: "RESCENE 🎀\n2026.07.08 6PM" } }],
+                edges: [{ node: { text: "IVE 🎀\n2026.07.08 6PM" } }],
               },
             },
           },
@@ -27,12 +27,12 @@ const profile = {
 
 describe("normalizeIgWebProfile", () => {
   it("maps a timeline node to a FeedItem", () => {
-    const [item] = normalizeIgWebProfile(profile, "rescene_official");
+    const [item] = normalizeIgWebProfile(profile, "ivestarship");
     expect(item.id).toBe("instagram:3922776647338051564");
     expect(item.source).toBe("instagram");
-    expect(item.author).toBe("rescene_official");
-    expect(item.title).toBe("RESCENE 🎀");
-    expect(item.snippet).toBe("RESCENE 🎀 2026.07.08 6PM");
+    expect(item.author).toBe("ivestarship");
+    expect(item.title).toBe("IVE 🎀");
+    expect(item.snippet).toBe("IVE 🎀 2026.07.08 6PM");
     expect(item.url).toBe("https://www.instagram.com/p/DZwgJO1yEfs/");
     expect(item.thumbnail).toBe("https://cdn.example.com/a.jpg");
     // taken_at_timestamp is in seconds → epoch ms.
@@ -50,12 +50,12 @@ describe("normalizeIgWebProfile", () => {
         },
       },
     };
-    const [item] = normalizeIgWebProfile(noCaption, "rescene_official");
+    const [item] = normalizeIgWebProfile(noCaption, "ivestarship");
     expect(item.title).toBe("(사진)");
   });
 
   it("returns [] when the profile has no timeline media", () => {
-    expect(normalizeIgWebProfile({ data: { user: {} } }, "rescene_official")).toEqual([]);
-    expect(normalizeIgWebProfile({}, "rescene_official")).toEqual([]);
+    expect(normalizeIgWebProfile({ data: { user: {} } }, "ivestarship")).toEqual([]);
+    expect(normalizeIgWebProfile({}, "ivestarship")).toEqual([]);
   });
 });

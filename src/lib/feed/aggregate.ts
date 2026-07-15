@@ -1,14 +1,18 @@
 import type { FeedItem, FeedSource } from "./types";
-import { ENABLED_SOURCES, FEED_LIMIT } from "./config";
+import { ENABLED_SOURCES, FEED_LIMIT, FEED_PER_SOURCE_LIMIT } from "./config";
 import * as naver from "./sources/naver";
 import * as daum from "./sources/daum";
 import * as dc from "./sources/dc";
 import * as instagram from "./sources/instagram";
 
-// Merge per-source lists into one newest-first, deduped, capped feed.
+// Merge per-source lists into one newest-first, deduped feed. The cap is
+// applied PER SOURCE (newest first), not globally — a high-volume source
+// (news) must not crowd a low-volume one (a member's weeks-old Instagram
+// post) out of the feed entirely.
 export function mergeFeedItems(
   lists: FeedItem[][],
   limit = FEED_LIMIT,
+  perSourceLimit = FEED_PER_SOURCE_LIMIT,
 ): FeedItem[] {
   const byId = new Map<string, FeedItem>();
   // Dedup keeps the FIRST occurrence in stable source order (this runs before
@@ -18,7 +22,21 @@ export function mergeFeedItems(
       if (!byId.has(it.id)) byId.set(it.id, it);
     }
   }
-  return [...byId.values()]
+  const bySource = new Map<string, FeedItem[]>();
+  for (const it of byId.values()) {
+    const group = bySource.get(it.source);
+    if (group) group.push(it);
+    else bySource.set(it.source, [it]);
+  }
+  const capped: FeedItem[] = [];
+  for (const group of bySource.values()) {
+    capped.push(
+      ...group
+        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .slice(0, perSourceLimit),
+    );
+  }
+  return capped
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .slice(0, limit);
 }

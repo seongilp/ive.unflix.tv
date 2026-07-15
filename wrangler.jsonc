@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rescene",
+  "name": "ive",
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-03-25",
   "compatibility_flags": ["nodejs_compat"],
@@ -10,22 +10,24 @@
     "directory": ".open-next/assets"
   },
   "routes": [
-    // Custom domain. Resolves once rescene.co's nameservers point to Cloudflare.
-    { "pattern": "yaho.rescene.co", "custom_domain": true }
+    // Custom domain. Resolves once unflix.tv's nameservers point to Cloudflare.
+    { "pattern": "ive.unflix.tv", "custom_domain": true }
   ],
   "observability": {
     "enabled": true
   },
   "kv_namespaces": [
     // App cache: video / Shorts classification per channel.
+    // NOTE: ive-prefixed namespaces — must NOT be shared with the old
+    // `rescene` worker, whose revalidations would clobber `feed:v1`.
     {
       "binding": "SHORTS_CACHE",
-      "id": "ed22daa6702e4a538075ca424b7d8e0b"
+      "id": "b6f3a3fad0a145bca8c1c8d1fe0b604d"
     },
     // OpenNext incremental cache (ISR / Next data cache).
     {
       "binding": "NEXT_INC_CACHE_KV",
-      "id": "2248c1ff2e054afa9ad38b91139e38b0"
+      "id": "572b22c84c84453e8880a4191473226e"
     }
   ]
 }

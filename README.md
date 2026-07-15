@@ -1,9 +1,9 @@
-# REScene LIVE
+# IVE LIVE
 
 Replay a YouTube channel's video comments as a scrolling **live‑chat** stream —
 like a Twitch/YouTube live chat, but built from the comments people already left.
 
-Defaults to the channel [`@helloiamwoninicetomeetyou`](https://www.youtube.com/@helloiamwoninicetomeetyou),
+Defaults to the channel [`@IVEstarship`](https://www.youtube.com/@IVEstarship),
 and you can load any other channel from the header.
 
 ## How it works
@@ -31,8 +31,8 @@ the video list for a clean overlay.
 3. Install and run:
 
    ```bash
-   npm install
-   npm run dev
+   pnpm install
+   pnpm dev
    ```
 
 4. Open http://localhost:3000.
@@ -41,19 +41,19 @@ the video list for a clean overlay.
 
 Runs on Cloudflare Workers via [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
 
-Live: **https://rescene.zihado.workers.dev**
+Live: **https://ive.zihado.workers.dev**
 
 ```bash
 # one-time: create the KV namespaces and paste ids into wrangler.jsonc
-npx wrangler kv namespace create SHORTS_CACHE
-npx wrangler kv namespace create NEXT_INC_CACHE_KV
+pnpm exec wrangler kv namespace create SHORTS_CACHE
+pnpm exec wrangler kv namespace create NEXT_INC_CACHE_KV
 
 # set the API key as a Worker secret (not committed)
-printf 'YOUR_KEY' | npx wrangler secret put YOUTUBE_API_KEY
+printf 'YOUR_KEY' | pnpm exec wrangler secret put YOUTUBE_API_KEY
 
 # build + deploy
-npm run deploy        # opennextjs-cloudflare build && deploy
-npm run preview       # build + run locally on workerd
+pnpm run deploy       # opennextjs-cloudflare build && deploy
+pnpm preview          # build + run locally on workerd
 ```
 
 KV bindings:

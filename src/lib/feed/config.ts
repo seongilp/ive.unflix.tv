@@ -1,25 +1,54 @@
 import type { FeedSource } from "./types";
 
 // Keyword set driving the broad sources (네이버뉴스). DC is already
-// group-specific. Append member names here later as needed.
-// Korean + romanized terms maximize search breadth across sources.
-export const KEYWORDS = ["리센느", "RESCENE"];
+// group-specific. Korean + romanized terms maximize search breadth.
+// Distinctive member names stand alone; common-word names (가을/레이/리즈/이서)
+// are qualified with "아이브" to avoid unrelated results.
+export const KEYWORDS = [
+  "아이브",
+  "IVE",
+  "안유진",
+  "장원영",
+  "아이브 가을",
+  "아이브 레이",
+  "아이브 리즈",
+  "아이브 이서",
+];
 
 // Sources wired AND enabled. 스레드/더쿠/인스티즈 are deferred.
 export const ENABLED_SOURCES: FeedSource[] = ["naver", "daum", "dc", "instagram"];
 
-export const FEED_LIMIT = 200;
+// Global cap is a payload backstop; the real fairness knob is the per-source
+// cap below (news volume must not push old Instagram posts out of the feed).
+export const FEED_LIMIT = 400;
+export const FEED_PER_SOURCE_LIMIT = 100;
 export const NAVER_PER_KEYWORD = 30;
 // Daum web search (Kakao Search API) results per keyword.
 export const DAUM_PER_KEYWORD = 25;
-export const IG_MEDIA_LIMIT = 25;
-// RESCENE official Instagram account, pulled via the Business Discovery API.
-export const IG_OFFICIAL_USERNAME = "rescene_official";
+// Per-account cap — 7 accounts, so keep each slice small and polite.
+export const IG_MEDIA_LIMIT = 12;
+// IVE official + member accounts (all verified), read via the logged-out
+// web_profile_info API. Instagram rate-limits bursts, so each feed refresh
+// fetches ONE account (round-robin) and accumulates results in KV — see
+// sources/instagram.ts.
+export const IG_USERNAMES = [
+  "ivestarship", // 공식
+  "_yujin_an", // 안유진
+  "fallingin__fall", // 가을
+  "reinyourheart", // 레이
+  "for_everyoung10", // 장원영
+  "liz.yeyo", // 리즈
+  "eeseooes", // 이서
+];
+// KV key prefix for the Instagram rotation state (reuses SHORTS_CACHE).
+// `<prefix>:cursor` + one `<prefix>:u:<username>` key per account — per-key
+// storage survives KV eventual consistency; a single blob does not.
+export const IG_STATE_KV_KEY = "feed:ig:v2";
 
-// DC 리센느 마이너 갤러리 (verified: gall.dcinside.com/mgallery/board/lists/?id=rescene1).
+// DC 1,2,3 아이브 마이너 갤러리 (verified: gall.dcinside.com/mgallery/board/lists/?id=123ive).
 // "mgallery" = minor gallery (board path /mgallery/board/...),
 // "board" = regular gallery (/board/...).
-export const DC_GALLERY_ID = "rescene1";
+export const DC_GALLERY_ID = "123ive";
 export const DC_GALLERY_TYPE: "mgallery" | "board" = "mgallery";
 export const DC_LIST_COUNT = 50;
 

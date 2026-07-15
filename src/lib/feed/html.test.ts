@@ -3,7 +3,7 @@ import { stripHtml, truncate } from "./html";
 
 describe("stripHtml", () => {
   it("removes tags and decodes common entities", () => {
-    expect(stripHtml("<b>리센느</b> &amp; &quot;원이&quot;")).toBe('리센느 & "원이"');
+    expect(stripHtml("<b>아이브</b> &amp; &quot;원영&quot;")).toBe('아이브 & "원영"');
   });
   it("collapses to trimmed text", () => {
     expect(stripHtml("  <p>hi</p>  ")).toBe("hi");

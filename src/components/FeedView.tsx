@@ -3,8 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FeedItem, FeedSource } from "@/lib/feed/types";
 import { ENABLED_SOURCES, SOURCE_LABELS } from "@/lib/feed/config";
+import { MEMBERS } from "@/lib/analysis/members";
 
 type Filter = "all" | FeedSource;
+
+// Instagram sub-filter: 공식 + each member, keyed by account username.
+const IG_ACCOUNTS: { username: string; label: string }[] = [
+  { username: "ivestarship", label: "공식" },
+  ...MEMBERS.map((m) => ({ username: m.igUsername, label: m.name })),
+];
+
+function igLabel(author: string): string | undefined {
+  return IG_ACCOUNTS.find((a) => a.username === author)?.label;
+}
 
 // Instagram's CDN blocks cross-origin <img> loads (Cross-Origin-Resource-Policy:
 // same-origin) AND 403s datacenter IPs (so our own Worker can't proxy it).
@@ -34,6 +45,13 @@ export function FeedView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  // Member filter inside the 인스타 tab ("all" or an account username).
+  const [igAuthor, setIgAuthor] = useState<string>("all");
+
+  const pickFilter = (f: Filter) => {
+    setFilter(f);
+    setIgAuthor("all");
+  };
 
   useEffect(() => {
     let alive = true;
@@ -56,10 +74,12 @@ export function FeedView() {
     };
   }, []);
 
-  const shown = useMemo(
-    () => (filter === "all" ? items : items.filter((i) => i.source === filter)),
-    [items, filter],
-  );
+  const shown = useMemo(() => {
+    const bySource =
+      filter === "all" ? items : items.filter((i) => i.source === filter);
+    if (filter !== "instagram" || igAuthor === "all") return bySource;
+    return bySource.filter((i) => i.author === igAuthor);
+  }, [items, filter, igAuthor]);
 
   const chips: { value: Filter; label: string }[] = [
     { value: "all", label: "전체" },
@@ -73,7 +93,7 @@ export function FeedView() {
         {chips.map((c) => (
           <button
             key={c.value}
-            onClick={() => setFilter(c.value)}
+            onClick={() => pickFilter(c.value)}
             className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors ${
               filter === c.value
                 ? "bg-accent text-white"
@@ -84,6 +104,34 @@ export function FeedView() {
           </button>
         ))}
       </div>
+
+      {/* 인스타 멤버 하위 필터 */}
+      {filter === "instagram" && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5 sm:px-6">
+          {[{ username: "all", label: "전체" }, ...IG_ACCOUNTS].map((a) => {
+            const count =
+              a.username === "all"
+                ? items.filter((i) => i.source === "instagram").length
+                : items.filter(
+                    (i) => i.source === "instagram" && i.author === a.username,
+                  ).length;
+            return (
+              <button
+                key={a.username}
+                onClick={() => setIgAuthor(a.username)}
+                disabled={count === 0 && a.username !== "all"}
+                className={`rounded-full px-2.5 py-1 text-[12px] font-semibold transition-colors disabled:opacity-40 ${
+                  igAuthor === a.username
+                    ? "bg-accent-soft text-accent"
+                    : "bg-[var(--surface-2)] text-muted hover:text-ink"
+                }`}
+              >
+                {a.label} <span className="num text-faint">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Cards */}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -109,6 +157,9 @@ export function FeedView() {
                     <div className="mb-1 flex items-center gap-2">
                       <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-bold text-accent">
                         {SOURCE_LABELS[item.source]}
+                        {item.source === "instagram" && igLabel(item.author)
+                          ? ` · ${igLabel(item.author)}`
+                          : ""}
                       </span>
                       <span className="num text-[12px] text-faint">
                         {item.author}
