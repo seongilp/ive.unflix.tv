@@ -23,6 +23,18 @@ function notify() {
   for (const l of listeners) l();
 }
 
+// Coalesce bursts of page arrivals into ~1 re-render per interval — during a
+// cold preload hundreds of pages land in seconds, and rebuilding the flat
+// channel-wide list (and the analysis over it) per page would be wasteful.
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleNotify() {
+  if (notifyTimer) return;
+  notifyTimer = setTimeout(() => {
+    notifyTimer = null;
+    notify();
+  }, 800);
+}
+
 // Subscribe to cache changes (fires as background preload fills it).
 export function subscribe(cb: () => void): () => void {
   listeners.add(cb);
@@ -72,6 +84,7 @@ export function fetchFirstPage(
     }
     const data = (await res.json()) as CommentPage;
     cache.set(k, data);
+    scheduleNotify();
     return data;
   })();
 

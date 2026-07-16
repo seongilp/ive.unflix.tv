@@ -383,8 +383,11 @@ interface CommentPage {
   nextPageToken?: string;
 }
 
-// How long a comment page stays cached in KV.
-const COMMENTS_TTL_SECONDS = 300;
+// How long a comment page stays cached in KV. Top-comment first pages barely
+// move hour-to-hour, and a long TTL is what makes server-side prewarming
+// (/api/comments/warm) stick — at 5 minutes the warmed cache evaporated
+// before anyone benefited.
+const COMMENTS_TTL_SECONDS = 3600;
 
 // Fetch top-level comments for a video. Supports pagination via pageToken and
 // an optional KV cache (5-min TTL) so repeat views are near-instant.
