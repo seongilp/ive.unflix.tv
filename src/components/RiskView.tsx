@@ -50,11 +50,54 @@ const KR_NAMES: Record<string, string> = {
   ...Object.fromEntries(MEMBERS.map((m) => [m.key, m.name])),
 };
 // Static avatars snapshotted from each account's Instagram profile photo
-// (IG's signed CDN urls expire, so we self-host under /members).
-const AVATARS: Record<string, string> = {
+// (IG's signed CDN urls expire, so we self-host under /members). Members whose
+// IG profile photo is currently blank fall back to an initial badge — list
+// them here so we don't ship an empty tile.
+const NO_PHOTO = new Set(["rei"]); // 레이: 현재 인스타 프로필 사진 비공개/공란
+const AVATARS: Record<string, string | null> = {
   all: "/members/all.jpg",
-  ...Object.fromEntries(MEMBERS.map((m) => [m.key, `/members/${m.key}.jpg`])),
+  ...Object.fromEntries(
+    MEMBERS.map((m) => [m.key, NO_PHOTO.has(m.key) ? null : `/members/${m.key}.jpg`]),
+  ),
 };
+// Gradient tint per member for the initial-badge fallback.
+const AVATAR_TINT: Record<string, [string, string]> = {
+  all: ["#22d3ee", "#0e7490"],
+  yujin: ["#f0abfc", "#a21caf"],
+  gaeul: ["#fdba74", "#c2410c"],
+  rei: ["#7dd3fc", "#2563eb"],
+  wonyoung: ["#fda4af", "#be123c"],
+  liz: ["#a5b4fc", "#4338ca"],
+  leeseo: ["#6ee7b7", "#047857"],
+};
+
+function Avatar({ member, ring }: { member: string; ring: string }) {
+  const src = AVATARS[member];
+  const [tone1, tone2] = AVATAR_TINT[member] ?? ["#334155", "#0f172a"];
+  const initial = (KR_NAMES[member] ?? member).slice(member === "all" ? 3 : 0, member === "all" ? 4 : 1);
+  return (
+    <span
+      className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full"
+      style={{
+        boxShadow: `0 0 0 1.5px color-mix(in srgb, ${ring} 55%, transparent)`,
+        background: src ? undefined : `linear-gradient(140deg, ${tone1}, ${tone2})`,
+      }}
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={(e) => { e.currentTarget.style.opacity = "0"; }}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span className="text-[14px] font-bold text-white/95">{initial}</span>
+      )}
+    </span>
+  );
+}
 const SOURCE_LABELS: Record<string, string> = {
   youtube: "유튜브",
   yt_ext: "외부 유튜브",
@@ -291,14 +334,14 @@ function WordCloud({ words }: { words: { word: string; count: number }[] }) {
     const t = (k.count - min) / Math.max(1, max - min);
     const size = 12 + Math.round(Math.sqrt(t) * 28); // 12–40px
     const risky = isRiskWord(k.word);
-    // Cyan→teal ramp by rank for normal words; red family for risk words.
-    const hueColor = risky
-      ? "var(--r-crit)"
-      : i < 4
-        ? "var(--r-cyan)"
-        : i < 12
-          ? "#7dd3fc"
-          : "#94a3b8";
+    // Gradient bucket by risk + prominence; brighter/warmer near the top.
+    const grad = risky
+      ? "wc-crit"
+      : i < 3
+        ? "wc-hot"
+        : i < 10
+          ? "wc-cool"
+          : "wc-faint";
     const bw = k.word.length * size * 0.62 + 8;
     const bh = size * 1.25;
 
@@ -319,7 +362,7 @@ function WordCloud({ words }: { words: { word: string; count: number }[] }) {
         break;
       }
     }
-    return { k, size, hueColor, risky, x, y, i };
+    return { k, size, grad, risky, x, y, i };
   });
 
   return (
@@ -329,38 +372,80 @@ function WordCloud({ words }: { words: { word: string; count: number }[] }) {
       role="img"
       aria-label="키워드 클라우드"
     >
-      {nodes.map(({ k, size, hueColor, risky, x, y, i }) => (
-        <g key={k.word} className="risk-in" style={{ animationDelay: `${140 + i * 22}ms` }}>
-          <text
-            x={x}
-            y={y}
-            fontSize={size}
-            fontWeight={size > 26 ? 800 : size > 18 ? 700 : 600}
-            fill={hueColor}
-            textAnchor="middle"
-            dominantBaseline="central"
-            style={{
-              fontFamily: size > 22 ? "Pretendard, sans-serif" : "inherit",
-              opacity: risky ? 1 : 0.92,
-            }}
-          >
-            {k.word}
-          </text>
-          {risky && (
+      <defs>
+        {/* Diagonal gradients — brighter core, deeper tail, for depth. */}
+        <linearGradient id="wc-hot" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" stopColor="#e0fbff" />
+          <stop offset="0.5" stopColor="#38e8ff" />
+          <stop offset="1" stopColor="#0ea5c4" />
+        </linearGradient>
+        <linearGradient id="wc-cool" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" stopColor="#bfe9ff" />
+          <stop offset="0.55" stopColor="#7dd3fc" />
+          <stop offset="1" stopColor="#4b93c9" />
+        </linearGradient>
+        <linearGradient id="wc-faint" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" stopColor="#aab6cc" />
+          <stop offset="1" stopColor="#5b667e" />
+        </linearGradient>
+        <linearGradient id="wc-crit" x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" stopColor="#ffd9df" />
+          <stop offset="0.5" stopColor="#fb7185" />
+          <stop offset="1" stopColor="#d1425c" />
+        </linearGradient>
+        {/* Soft outer glow; strength dialed per-word via feDropShadow opacity. */}
+        <filter id="wc-glow-strong" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#22d3ee" floodOpacity="0.55" />
+        </filter>
+        <filter id="wc-glow-soft" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22d3ee" floodOpacity="0.3" />
+        </filter>
+        <filter id="wc-glow-crit" x="-45%" y="-45%" width="190%" height="190%">
+          <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#fb7185" floodOpacity="0.6" />
+        </filter>
+      </defs>
+      {nodes.map(({ k, size, grad, risky, x, y, i }) => {
+        const filter = risky
+          ? "url(#wc-glow-crit)"
+          : size >= 26
+            ? "url(#wc-glow-strong)"
+            : size >= 18
+              ? "url(#wc-glow-soft)"
+              : undefined;
+        return (
+          <g key={k.word} className="risk-in" style={{ animationDelay: `${140 + i * 22}ms` }}>
             <text
               x={x}
-              y={y + size * 0.72}
-              fontSize={7}
-              fill="var(--r-crit)"
+              y={y}
+              fontSize={size}
+              fontWeight={size > 26 ? 800 : size > 18 ? 700 : 600}
+              fill={`url(#${grad})`}
+              filter={filter}
               textAnchor="middle"
-              opacity="0.65"
-              style={{ letterSpacing: "0.1em" }}
+              dominantBaseline="central"
+              style={{
+                fontFamily: size > 22 ? "Pretendard, sans-serif" : "inherit",
+                opacity: risky ? 1 : size < 16 ? 0.85 : 0.96,
+              }}
             >
-              ▲{k.count}
+              {k.word}
             </text>
-          )}
-        </g>
-      ))}
+            {risky && (
+              <text
+                x={x}
+                y={y + size * 0.72}
+                fontSize={7}
+                fill="var(--r-crit)"
+                textAnchor="middle"
+                opacity="0.7"
+                style={{ letterSpacing: "0.1em" }}
+              >
+                ▲{k.count}
+              </text>
+            )}
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -416,19 +501,7 @@ function MemberTile({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full"
-            style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${meta.color} 55%, transparent)` }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={AVATARS[member]}
-              alt=""
-              loading="lazy"
-              onError={(e) => { e.currentTarget.style.opacity = "0"; }}
-              className="h-full w-full object-cover"
-            />
-          </span>
+          <Avatar member={member} ring={meta.color} />
           <div className="min-w-0">
             <div className="risk-label truncate">{EN_NAMES[member] ?? member}</div>
             <div className="mt-0.5 truncate text-[16px] font-bold tracking-tight">{KR_NAMES[member] ?? member}</div>
