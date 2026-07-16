@@ -49,6 +49,12 @@ const KR_NAMES: Record<string, string> = {
   all: "아이브 전체",
   ...Object.fromEntries(MEMBERS.map((m) => [m.key, m.name])),
 };
+// Static avatars snapshotted from each account's Instagram profile photo
+// (IG's signed CDN urls expire, so we self-host under /members).
+const AVATARS: Record<string, string> = {
+  all: "/members/all.jpg",
+  ...Object.fromEntries(MEMBERS.map((m) => [m.key, `/members/${m.key}.jpg`])),
+};
 const SOURCE_LABELS: Record<string, string> = {
   youtube: "유튜브",
   yt_ext: "외부 유튜브",
@@ -95,6 +101,126 @@ function ago(ts: number, now: number): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}시간 전`;
   return `${Math.floor(h / 24)}일 전`;
+}
+
+const LEVEL_RANK: Record<Level, number> = {
+  CRITICAL: 4, HIGH: 3, ELEVATED: 2, LOW: 1, CALIBRATING: 0,
+};
+
+interface ExecSummary {
+  overall: Level;
+  headline: string;
+  bullets: string[];
+  calibrating: boolean;
+  runs: number;
+}
+
+// Roll the member board + alerts into a one-glance executive read.
+function buildSummary(
+  members: Record<string, Snap[]>,
+  alerts: AlertRow[],
+  latestTs: number,
+  runs: number,
+): ExecSummary {
+  const memberKeys = MEMBERS.map((m) => m.key);
+  const levels = memberKeys.map((m) => ({
+    m,
+    level: threatLevel(members[m] ?? [], alerts, m, latestTs),
+  }));
+  const overall = levels.reduce<Level>(
+    (worst, x) => (LEVEL_RANK[x.level] > LEVEL_RANK[worst] ? x.level : worst),
+    threatLevel(members.all ?? [], alerts, "all", latestTs),
+  );
+  const calibrating = runs < 6;
+
+  const dayAgo = latestTs - 24 * 60 * 60 * 1000;
+  const recent = alerts.filter((a) => a.ts >= dayAgo);
+  const crit = recent.filter((a) => a.severity === "critical").length;
+  const warn = recent.filter((a) => a.severity === "warning").length;
+
+  const group = members.all ?? [];
+  const latest = group[group.length - 1];
+  const totalMentions = latest?.mentions ?? 0;
+  const prev = group.slice(0, -1);
+  const avgMentions = prev.length
+    ? prev.reduce((n, s) => n + s.mentions, 0) / prev.length
+    : 0;
+  const momentum = latest && avgMentions > 0 ? latest.mentions / avgMentions : null;
+
+  // Members ranked by threat, then by negativity, for the watchlist line.
+  const flagged = levels
+    .filter((x) => LEVEL_RANK[x.level] >= LEVEL_RANK.ELEVATED)
+    .sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level])
+    .map((x) => KR_NAMES[x.m]);
+
+  let headline: string;
+  if (calibrating) {
+    headline = "베이스라인 수집 중 — 평시 패턴이 잡히면 이탈 신호를 판정합니다";
+  } else if (overall === "CRITICAL") {
+    headline = "위험 신호 감지 — 즉시 확인이 필요한 이탈이 있습니다";
+  } else if (overall === "HIGH") {
+    headline = "경계 구간 — 평시 대비 뚜렷한 이탈이 관측됩니다";
+  } else if (overall === "ELEVATED") {
+    headline = "주의 구간 — 일부 지표가 평시보다 높습니다";
+  } else {
+    headline = "안정 — 모든 채널이 평시 범위 안에서 움직입니다";
+  }
+
+  const bullets: string[] = [];
+  bullets.push(
+    crit > 0 || warn > 0
+      ? `최근 24시간 활성 알림 ${crit + warn}건 (위험 ${crit} · 경계 ${warn})`
+      : "최근 24시간 활성 알림 없음",
+  );
+  if (totalMentions > 0) {
+    bullets.push(
+      momentum !== null
+        ? `총 언급량 ${totalMentions.toLocaleString()}건 · 평시 대비 ${momentum >= 1 ? "▲" : "▼"}${momentum.toFixed(1)}배`
+        : `총 언급량 ${totalMentions.toLocaleString()}건 (기준선 수집 전)`,
+    );
+  }
+  bullets.push(
+    flagged.length > 0
+      ? `주시 대상: ${flagged.slice(0, 3).join(" · ")}`
+      : "주시 대상 멤버 없음 — 전원 평시 범위",
+  );
+  return { overall, headline, bullets, calibrating, runs };
+}
+
+function ExecPanel({ summary }: { summary: ExecSummary }) {
+  const meta = LEVEL_META[summary.overall];
+  return (
+    <div
+      className="risk-panel risk-in flex flex-col justify-between p-5"
+      style={{ animationDelay: "120ms", boxShadow: `0 0 40px -20px ${meta.glow}` }}
+    >
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="risk-label" style={{ color: "var(--r-cyan)" }}>
+            Executive Summary
+          </span>
+          <span
+            className="risk-mono flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold tracking-[0.14em]"
+            style={{ color: meta.color, borderColor: `color-mix(in srgb, ${meta.color} 35%, transparent)` }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+            THREAT {summary.calibrating ? "—" : summary.overall} · {meta.label}
+          </span>
+        </div>
+        <p className="mt-3 text-[15px] font-semibold leading-snug" style={{ color: "var(--r-ink)" }}>
+          {summary.headline}
+        </p>
+      </div>
+      <ul className="mt-4 flex flex-col gap-1.5">
+        {summary.bullets.map((b, i) => (
+          <li key={i} className="flex items-baseline gap-2 text-[12.5px]" style={{ color: "var(--r-muted)" }}>
+            <span className="risk-mono shrink-0 text-[9px]" style={{ color: "var(--r-cyan)" }}>▸</span>
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Mentions sparkline with a soft area fill; draws in on mount. */
@@ -178,12 +304,27 @@ function MemberTile({
       style={{ animationDelay: `${90 + index * 60}ms`, boxShadow: `0 0 32px -18px ${meta.glow}` }}
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="risk-label">{EN_NAMES[member] ?? member}</div>
-          <div className="mt-0.5 text-[16px] font-bold tracking-tight">{KR_NAMES[member] ?? member}</div>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full"
+            style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${meta.color} 55%, transparent)` }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={AVATARS[member]}
+              alt=""
+              loading="lazy"
+              onError={(e) => { e.currentTarget.style.opacity = "0"; }}
+              className="h-full w-full object-cover"
+            />
+          </span>
+          <div className="min-w-0">
+            <div className="risk-label truncate">{EN_NAMES[member] ?? member}</div>
+            <div className="mt-0.5 truncate text-[16px] font-bold tracking-tight">{KR_NAMES[member] ?? member}</div>
+          </div>
         </div>
         <span
-          className="risk-mono flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold tracking-[0.14em]"
+          className="risk-mono flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold tracking-[0.14em]"
           style={{ color: meta.color, borderColor: `color-mix(in srgb, ${meta.color} 35%, transparent)` }}
         >
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
@@ -274,14 +415,17 @@ export function RiskView() {
     };
   }, []);
 
-  const groupTrend = data?.members.all ?? [];
-  const memberKeys = useMemo(
-    () => ["all", ...MEMBERS.map((m) => m.key)],
-    [],
-  );
+  const groupTrend = useMemo(() => data?.members.all ?? [], [data]);
   const snapshotRuns = useMemo(
     () => new Set(groupTrend.map((s) => s.ts)).size,
     [groupTrend],
+  );
+  const summary = useMemo(
+    () =>
+      data
+        ? buildSummary(data.members, data.alerts, data.latestTs, snapshotRuns)
+        : null,
+    [data, snapshotRuns],
   );
 
   // ── Empty / initializing state ──
@@ -340,16 +484,30 @@ export function RiskView() {
           </span>
         </div>
 
-        {/* ── Member threat board ── */}
+        {/* ── Row 1: 아이브 카드 + Executive Summary ── */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {memberKeys.map((m, i) => (
+          <MemberTile
+            member="all"
+            trend={d.members.all ?? []}
+            alerts={d.alerts}
+            latestTs={d.latestTs}
+            index={0}
+          />
+          <div className="sm:col-span-1 xl:col-span-2">
+            {summary && <ExecPanel summary={summary} />}
+          </div>
+        </div>
+
+        {/* ── Member threat board (from row 2) ── */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {MEMBERS.map((m, i) => (
             <MemberTile
-              key={m}
-              member={m}
-              trend={d.members[m] ?? []}
+              key={m.key}
+              member={m.key}
+              trend={d.members[m.key] ?? []}
               alerts={d.alerts}
               latestTs={d.latestTs}
-              index={i}
+              index={i + 1}
             />
           ))}
         </div>
