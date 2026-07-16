@@ -5,6 +5,7 @@
 // risk pipeline (D1 snapshots collected every 2h by the cron worker).
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { MEMBERS } from "@/lib/analysis/members";
 import { RISK_LABELS } from "@/lib/risk/terms";
 
@@ -266,10 +267,30 @@ function ExecPanel({ summary }: { summary: ExecSummary }) {
   );
 }
 
-/** Mentions sparkline with a soft area fill; draws in on mount. */
-function Spark({ trend, color }: { trend: Snap[]; color: string }) {
+// Catmull-Rom → cubic-bezier: a smooth curve through every point (no
+// overshoot control needed for monotone-ish series like these).
+function smoothPath(xy: number[][], tension = 0.5): string {
+  if (xy.length < 2) return "";
+  if (xy.length === 2) return `M${xy[0][0]},${xy[0][1]} L${xy[1][0]},${xy[1][1]}`;
+  let d = `M${xy[0][0].toFixed(1)},${xy[0][1].toFixed(1)}`;
+  for (let i = 0; i < xy.length - 1; i++) {
+    const p0 = xy[i - 1] ?? xy[i];
+    const p1 = xy[i];
+    const p2 = xy[i + 1];
+    const p3 = xy[i + 2] ?? p2;
+    const c1x = p1[0] + ((p2[0] - p0[0]) / 6) * tension * 2;
+    const c1y = p1[1] + ((p2[1] - p0[1]) / 6) * tension * 2;
+    const c2x = p2[0] - ((p3[0] - p1[0]) / 6) * tension * 2;
+    const c2y = p2[1] - ((p3[1] - p1[1]) / 6) * tension * 2;
+    d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Mentions sparkline — smooth curve, gradient area fill; draws in on mount. */
+function Spark({ trend, color, uid }: { trend: Snap[]; color: string; uid: string }) {
   const w = 132;
-  const h = 34;
+  const h = 36;
   const pts = trend.map((s) => s.mentions);
   if (pts.length < 2) {
     return (
@@ -283,16 +304,24 @@ function Spark({ trend, color }: { trend: Snap[]; color: string }) {
   const span = Math.max(max - min, 1);
   const xy = pts.map((v, i) => [
     (i / (pts.length - 1)) * (w - 6) + 3,
-    h - 5 - ((v - min) / span) * (h - 12),
+    h - 6 - ((v - min) / span) * (h - 14),
   ]);
-  const d = xy.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const area = `${d} L${xy[xy.length - 1][0].toFixed(1)},${h - 2} L${xy[0][0].toFixed(1)},${h - 2} Z`;
+  const line = smoothPath(xy);
+  const area = `${line} L${xy[xy.length - 1][0].toFixed(1)},${h} L${xy[0][0].toFixed(1)},${h} Z`;
   const [lx, ly] = xy[xy.length - 1];
+  const gid = `sp-${uid}`;
   return (
     <svg width={w} height={h} className="risk-spark" aria-hidden>
-      <path d={area} fill={color} opacity="0.09" />
-      <path d={d} fill="none" stroke={color} strokeWidth="1.6" className="draw" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r="2.4" fill={color} />
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity="0.28" />
+          <stop offset="1" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.8" className="draw" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lx} cy={ly} r="3.2" fill={color} opacity="0.25" />
+      <circle cx={lx} cy={ly} r="2" fill={color} />
     </svg>
   );
 }
@@ -474,12 +503,14 @@ function MemberTile({
   alerts,
   latestTs,
   index,
+  onOpen,
 }: {
   member: string;
   trend: Snap[];
   alerts: AlertRow[];
   latestTs: number;
   index: number;
+  onOpen: (member: string) => void;
 }) {
   const latest = trend[trend.length - 1];
   const level = threatLevel(trend, alerts, member, latestTs);
@@ -495,8 +526,10 @@ function MemberTile({
     : [];
 
   return (
-    <div
-      className="risk-panel risk-in flex flex-col gap-3 p-4"
+    <button
+      type="button"
+      onClick={() => onOpen(member)}
+      className="risk-panel risk-tile risk-in flex flex-col gap-3 p-4 text-left"
       style={{ animationDelay: `${90 + index * 60}ms`, boxShadow: `0 0 32px -18px ${meta.glow}` }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -531,7 +564,7 @@ function MemberTile({
             )}
           </div>
         </div>
-        <Spark trend={trend} color={level === "LOW" || level === "CALIBRATING" ? "#22d3ee" : meta.color} />
+        <Spark trend={trend} uid={member} color={level === "LOW" || level === "CALIBRATING" ? "#22d3ee" : meta.color} />
       </div>
 
       {latest && (
@@ -563,8 +596,11 @@ function MemberTile({
             NO RISK SIGNAL
           </span>
         )}
+        <span className="risk-detail-cue risk-mono ml-auto self-center text-[10px]" style={{ color: "var(--r-cyan)" }}>
+          상세 →
+        </span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -574,9 +610,259 @@ const SEVERITY_META: Record<AlertRow["severity"], { color: string; glyph: string
   info: { color: "var(--r-cyan)", glyph: "●" },
 };
 
+interface MemberDetail {
+  member: string;
+  latestTs: number;
+  trend: Snap[];
+  sources: Snap[];
+  alerts: AlertRow[];
+}
+
+// Large dual-line area chart: mentions (left, curve+fill) and negativity %
+// (right, thin curve). Hover crosshair reads out both at that snapshot.
+function DetailChart({ trend }: { trend: Snap[] }) {
+  const W = 640;
+  const H = 210;
+  const padX = 8;
+  const padTop = 16;
+  const padBot = 26;
+  const [hover, setHover] = useState<number | null>(null);
+
+  if (trend.length < 2) {
+    return (
+      <div className="flex h-[180px] items-center justify-center text-[12px]" style={{ color: "var(--r-faint)" }}>
+        추세를 그리려면 스냅샷이 2개 이상 필요해요 (2시간 주기 수집 중)
+      </div>
+    );
+  }
+  const mentions = trend.map((s) => s.mentions);
+  const negs = trend.map((s) => negShare(s) * 100);
+  const mMax = Math.max(...mentions, 1);
+  const mMin = Math.min(...mentions);
+  const mSpan = Math.max(mMax - mMin, 1);
+  const nMax = Math.max(...negs, 10);
+
+  const xAt = (i: number) => padX + (i / (trend.length - 1)) * (W - padX * 2);
+  const yMent = (v: number) => padTop + (1 - (v - mMin) / mSpan) * (H - padTop - padBot);
+  const yNeg = (v: number) => padTop + (1 - v / nMax) * (H - padTop - padBot);
+
+  const mXY = mentions.map((v, i) => [xAt(i), yMent(v)]);
+  const nXY = negs.map((v, i) => [xAt(i), yNeg(v)]);
+  const mLine = smoothPath(mXY);
+  const mArea = `${mLine} L${xAt(trend.length - 1).toFixed(1)},${H - padBot} L${xAt(0).toFixed(1)},${H - padBot} Z`;
+  const nLine = smoothPath(nXY);
+
+  const hi = hover ?? trend.length - 1;
+  const hs = trend[hi];
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-auto w-full"
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const rx = ((e.clientX - rect.left) / rect.width) * W;
+          const idx = Math.round(((rx - padX) / (W - padX * 2)) * (trend.length - 1));
+          setHover(Math.max(0, Math.min(trend.length - 1, idx)));
+        }}
+      >
+        <defs>
+          <linearGradient id="dc-ment" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#22d3ee" stopOpacity="0.3" />
+            <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* baseline grid */}
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} x1={padX} x2={W - padX} y1={padTop + f * (H - padTop - padBot)} y2={padTop + f * (H - padTop - padBot)} stroke="var(--r-line)" strokeWidth="1" />
+        ))}
+        <path d={mArea} fill="url(#dc-ment)" />
+        <path d={mLine} fill="none" stroke="#22d3ee" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={nLine} fill="none" stroke="var(--r-crit)" strokeWidth="1.6" strokeDasharray="1 3" strokeLinecap="round" opacity="0.85" />
+        {/* crosshair */}
+        <line x1={xAt(hi)} x2={xAt(hi)} y1={padTop} y2={H - padBot} stroke="var(--r-cyan)" strokeWidth="1" opacity="0.4" />
+        <circle cx={xAt(hi)} cy={yMent(mentions[hi])} r="3.5" fill="#22d3ee" />
+        <circle cx={xAt(hi)} cy={yNeg(negs[hi])} r="3" fill="var(--r-crit)" />
+      </svg>
+      <div className="risk-mono pointer-events-none absolute right-2 top-1 rounded-md border border-[var(--r-line)] bg-[rgba(7,11,22,0.85)] px-2 py-1 text-[10px]" style={{ color: "var(--r-muted)" }}>
+        <span style={{ color: "#22d3ee" }}>언급 {hs.mentions.toLocaleString()}</span>
+        {" · "}
+        <span style={{ color: "var(--r-crit)" }}>부정 {(negShare(hs) * 100).toFixed(0)}%</span>
+        <div className="mt-0.5 opacity-60">{fmtTime(hs.ts)}</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailModal({
+  member,
+  fallbackTrend,
+  fallbackAlerts,
+  latestTs,
+  onClose,
+}: {
+  member: string;
+  fallbackTrend: Snap[];
+  fallbackAlerts: AlertRow[];
+  latestTs: number;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<MemberDetail | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/risk/member?key=${member}`);
+        const j = (await r.json()) as MemberDetail & { error?: string };
+        if (alive && !j.error) setDetail(j);
+      } catch { /* fall back to summary-provided data */ }
+    })();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => {
+      alive = false;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [member, onClose]);
+
+  const trend = detail?.trend ?? fallbackTrend;
+  const alerts = detail?.alerts ?? fallbackAlerts.filter((a) => a.member === member);
+  const sources = detail?.sources ?? [];
+  const latest = trend[trend.length - 1];
+  const level = threatLevel(trend, alerts, member, latestTs);
+  const meta = LEVEL_META[level];
+  const keywords = latest?.keywords ?? [];
+  const riskCats = latest ? Object.entries(latest.risk).sort((a, z) => z[1] - a[1]) : [];
+  const now = detail?.latestTs || latestTs;
+  // Only portals on the client; the modal never renders during SSR anyway
+  // (it's mounted from a click handler).
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    // Inline position:fixed — `.risk-root { position: relative }` would
+    // otherwise beat Tailwind's `fixed` and drop the modal below the fold.
+    <div
+      className="risk-root z-[100] flex items-start justify-center overflow-y-auto p-3 sm:p-6"
+      style={{ position: "fixed", inset: 0, background: "rgba(4,7,14,0.72)", backdropFilter: "blur(3px)" }}
+      onClick={onClose}
+    >
+      <div className="risk-modal-in risk-panel relative my-auto w-full max-w-4xl p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
+        {/* header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Avatar member={member} ring={meta.color} />
+            <div>
+              <div className="risk-label">{EN_NAMES[member] ?? member} · Detail</div>
+              <div className="text-[19px] font-extrabold tracking-tight">{KR_NAMES[member] ?? member}</div>
+            </div>
+            <span
+              className="risk-mono ml-1 flex items-center gap-1.5 self-center rounded-md border px-2 py-1 text-[10px] font-semibold tracking-[0.14em]"
+              style={{ color: meta.color, borderColor: `color-mix(in srgb, ${meta.color} 35%, transparent)` }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+              {level === "CALIBRATING" ? "관측중" : level} · {meta.label}
+            </span>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 text-[var(--r-muted)] transition-colors hover:bg-[rgba(148,163,184,0.1)] hover:text-[var(--r-ink)]" aria-label="닫기">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+
+        {/* KPI row */}
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { l: "최근 언급 / 2h", v: latest ? latest.mentions.toLocaleString() : "—", c: "#22d3ee" },
+            { l: "부정 여론", v: latest ? `${(negShare(latest) * 100).toFixed(0)}%` : "—", c: latest && negShare(latest) >= 0.25 ? "var(--r-crit)" : "var(--r-ink)" },
+            { l: "공감가중 부정", v: latest ? `${(latest.negWeighted * 100).toFixed(0)}%` : "—", c: "var(--r-ink)" },
+            { l: "24h 알림", v: String(alerts.filter((a) => a.ts >= now - 864e5).length), c: "var(--r-warn)" },
+          ].map((k) => (
+            <div key={k.l} className="rounded-xl border border-[var(--r-line)] p-3">
+              <div className="risk-label">{k.l}</div>
+              <div className="risk-mono mt-1 text-[20px] font-semibold" style={{ color: k.c }}>{k.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* chart */}
+        <div className="mt-4 rounded-xl border border-[var(--r-line)] p-3">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="risk-label">Mentions & Negativity · 추세</span>
+            <span className="risk-mono flex items-center gap-3 text-[10px]" style={{ color: "var(--r-faint)" }}>
+              <span className="flex items-center gap-1"><span className="h-[2px] w-3" style={{ background: "#22d3ee" }} />언급량</span>
+              <span className="flex items-center gap-1"><span className="h-[2px] w-3" style={{ background: "var(--r-crit)" }} />부정률</span>
+            </span>
+          </div>
+          <DetailChart trend={trend} />
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {/* source breakdown */}
+          <div className="rounded-xl border border-[var(--r-line)] p-4">
+            <div className="risk-label mb-2.5">소스별 분해 · 최근</div>
+            {sources.length === 0 ? (
+              <p className="text-[12px]" style={{ color: "var(--r-faint)" }}>이 멤버의 소스별 데이터가 아직 없어요</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {sources.sort((a, b) => b.mentions - a.mentions).map((s) => (
+                  <div key={s.source} className="flex items-center gap-2.5">
+                    <span className="w-[74px] shrink-0 text-[11.5px] font-semibold" style={{ color: "var(--r-muted)" }}>{SOURCE_LABELS[s.source] ?? s.source}</span>
+                    <div className="min-w-0 flex-1"><ToneBar s={s} /></div>
+                    <span className="risk-mono w-[92px] shrink-0 text-right text-[10.5px]" style={{ color: "var(--r-faint)" }}>{s.mentions.toLocaleString()} · N{(negShare(s) * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="risk-label mb-2 mt-4">리스크 카테고리</div>
+            <div className="flex flex-wrap gap-1.5">
+              {riskCats.length > 0 ? riskCats.map(([cat, n]) => (
+                <span key={cat} className="risk-mono rounded border border-[rgba(251,113,133,0.25)] bg-[rgba(251,113,133,0.08)] px-1.5 py-0.5 text-[10.5px]" style={{ color: "var(--r-crit)" }}>{RISK_LABELS[cat] ?? cat} {n}</span>
+              )) : <span className="risk-mono text-[10.5px]" style={{ color: "var(--r-faint)" }}>감지된 리스크 어휘 없음</span>}
+            </div>
+          </div>
+
+          {/* keywords + alerts */}
+          <div className="rounded-xl border border-[var(--r-line)] p-4">
+            <div className="risk-label mb-2.5">키워드</div>
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {keywords.slice(0, 16).map((k) => (
+                <span key={k.word} className="risk-mono rounded border border-[var(--r-line)] px-1.5 py-0.5 text-[10.5px]" style={{ color: isRiskWord(k.word) ? "var(--r-crit)" : "var(--r-muted)" }}>
+                  {k.word} <span style={{ color: "var(--r-faint)" }}>{k.count}</span>
+                </span>
+              ))}
+              {keywords.length === 0 && <span className="risk-mono text-[10.5px]" style={{ color: "var(--r-faint)" }}>—</span>}
+            </div>
+            <div className="risk-label mb-2.5">알림 이력</div>
+            {alerts.length === 0 ? (
+              <p className="text-[12px]" style={{ color: "var(--r-faint)" }}>이 멤버에 대한 알림이 없어요</p>
+            ) : (
+              <ul className="flex max-h-40 flex-col gap-0.5 overflow-y-auto pr-1">
+                {alerts.map((a, i) => {
+                  const sev = SEVERITY_META[a.severity] ?? SEVERITY_META.info;
+                  return (
+                    <li key={`${a.ts}-${i}`} className="flex items-baseline gap-2 py-1">
+                      <span className="risk-mono shrink-0 text-[10px]" style={{ color: sev.color }}>{sev.glyph}</span>
+                      <span className="min-w-0 flex-1 text-[12px] leading-snug">{a.message}</span>
+                      <span className="risk-mono shrink-0 text-[10px]" style={{ color: "var(--r-faint)" }}>{ago(a.ts, now)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function RiskView() {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -676,6 +962,7 @@ export function RiskView() {
             alerts={d.alerts}
             latestTs={d.latestTs}
             index={0}
+            onOpen={setSelected}
           />
           <div className="sm:col-span-1 xl:col-span-2">
             {summary && <ExecPanel summary={summary} />}
@@ -692,6 +979,7 @@ export function RiskView() {
               alerts={d.alerts}
               latestTs={d.latestTs}
               index={i + 1}
+              onOpen={setSelected}
             />
           ))}
         </div>
@@ -777,6 +1065,16 @@ export function RiskView() {
           추정치이며 판단의 보조 자료로만 사용하세요.
         </p>
       </div>
+
+      {selected && (
+        <DetailModal
+          member={selected}
+          fallbackTrend={d.members[selected] ?? []}
+          fallbackAlerts={d.alerts}
+          latestTs={d.latestTs}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </div>
   );
 }

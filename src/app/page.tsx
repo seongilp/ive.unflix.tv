@@ -386,14 +386,14 @@ export default function Home() {
               value={mode}
               onChange={setMode}
               options={[
+                { value: "risk", label: "리스크" },
+                { value: "analysis", label: "분석" },
+                { value: "feed", label: "피드" },
                 { value: "list", label: "목록" },
                 { value: "live", label: "라이브" },
                 { value: "sync", label: "동기화" },
                 { value: "hall", label: "전당" },
                 { value: "search", label: "검색" },
-                { value: "feed", label: "피드" },
-                { value: "analysis", label: "분석" },
-                { value: "risk", label: "리스크" },
               ]}
             />
 
