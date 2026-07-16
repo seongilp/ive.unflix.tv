@@ -113,6 +113,46 @@ async function call<T>(
   );
 }
 
+export interface SearchHit {
+  videoId: string;
+  channelId: string;
+  title: string;
+}
+
+// search.list — expensive (100 quota units per call); used sparingly by the
+// risk pipeline to discover NON-official videos (news/issue channels) that
+// mention the group or a member.
+export async function searchVideos(
+  query: string,
+  opts: { publishedAfterMs?: number; maxResults?: number } = {},
+): Promise<SearchHit[]> {
+  const params: Record<string, string> = {
+    part: "snippet",
+    q: query,
+    type: "video",
+    order: "date",
+    maxResults: String(opts.maxResults ?? 8),
+    regionCode: "KR",
+    relevanceLanguage: "ko",
+  };
+  if (opts.publishedAfterMs) {
+    params.publishedAfter = new Date(opts.publishedAfterMs).toISOString();
+  }
+  const data = await call<{
+    items?: Array<{
+      id?: { videoId?: string };
+      snippet?: { channelId?: string; title?: string };
+    }>;
+  }>("search", params);
+  return (data.items ?? [])
+    .filter((it) => it.id?.videoId)
+    .map((it) => ({
+      videoId: it.id!.videoId!,
+      channelId: it.snippet?.channelId ?? "",
+      title: it.snippet?.title ?? "",
+    }));
+}
+
 // Resolve a channel from a handle ("@name" or "name") or a raw channel ID.
 export async function resolveChannel(handleOrId: string): Promise<ChannelInfo> {
   const cleaned = handleOrId.trim().replace(/^@/, "");

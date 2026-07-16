@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ive-risk-cron",
+  "main": "index.ts",
+  "compatibility_date": "2025-03-25",
+  "workers_dev": false,
+  "triggers": {
+    // Must match the constants in index.ts exactly (event.cron comparison).
+    "crons": ["7 */2 * * *", "23 3,15 * * *"]
+  },
+  "vars": {
+    "APP_BASE": "https://ive.zihado.workers.dev"
+  }
+  // OPS_KEY is a secret: `wrangler secret put OPS_KEY -c workers/cron/wrangler.jsonc`
+}

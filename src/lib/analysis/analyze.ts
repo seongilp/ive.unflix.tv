@@ -36,7 +36,7 @@ const KEYWORD_TOP = 12;
 
 // Every member alias (plus display names) — excluded from keyword lists since
 // "장원영" being the top keyword for 장원영 says nothing.
-const ALIAS_EXCLUDE = new Set(
+export const ALIAS_EXCLUDE = new Set(
   MEMBERS.flatMap((m) => [...m.aliases, m.name, "아이브", "ive"]),
 );
 

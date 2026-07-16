@@ -13,6 +13,7 @@ import { SearchView } from "@/components/SearchView";
 import { SyncView } from "@/components/SyncView";
 import { FeedView } from "@/components/FeedView";
 import { AnalysisView } from "@/components/AnalysisView";
+import { RiskView } from "@/components/RiskView";
 import { preloadFirstPages } from "@/lib/commentsCache";
 
 // Quick-pick channels shown in the header. The API resolves both @handles and
@@ -23,10 +24,11 @@ const PRESET_CHANNELS = [
 const DEFAULT_HANDLE = PRESET_CHANNELS[0].handle;
 const SPEEDS: StreamSpeed[] = ["slow", "normal", "fast"];
 
-type ViewMode = "list" | "live" | "sync" | "hall" | "search" | "feed" | "analysis";
+type ViewMode =
+  | "list" | "live" | "sync" | "hall" | "search" | "feed" | "analysis" | "risk";
 
 // Channel-wide views (not tied to the selected video).
-const CHANNEL_VIEWS: ViewMode[] = ["hall", "search", "feed", "analysis"];
+const CHANNEL_VIEWS: ViewMode[] = ["hall", "search", "feed", "analysis", "risk"];
 
 /** Toss-style pill segmented control. */
 function Segmented<T extends string>({
@@ -391,11 +393,12 @@ export default function Home() {
                 { value: "search", label: "검색" },
                 { value: "feed", label: "피드" },
                 { value: "analysis", label: "분석" },
+                { value: "risk", label: "리스크" },
               ]}
             />
 
-            {/* 전당·분석은 항상 인기순 첫 페이지 기준이라 토글이 의미 없다. */}
-            {mode !== "hall" && mode !== "feed" && mode !== "analysis" && (
+            {/* 전당·분석·리스크는 항상 인기순 첫 페이지 기준이라 토글이 의미 없다. */}
+            {mode !== "hall" && mode !== "feed" && mode !== "analysis" && mode !== "risk" && (
               <Segmented<"relevance" | "time">
                 size="sm"
                 value={order}
@@ -476,6 +479,8 @@ export default function Home() {
               <FeedView />
             ) : mode === "analysis" ? (
               <AnalysisView videos={videos} onJump={jumpToVideo} />
+            ) : mode === "risk" ? (
+              <RiskView />
             ) : !selectedId ? (
               <EmptyState message="영상을 선택하세요" />
             ) : mode === "sync" ? (

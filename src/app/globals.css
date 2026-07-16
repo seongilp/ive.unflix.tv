@@ -1,6 +1,8 @@
 /* Pretendard — the same clean Korean + Latin face Toss-style UIs use.
    Loaded at runtime; must precede every other rule incl. the Tailwind import. */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+/* IBM Plex Mono — instrument-panel numerals for the risk dashboard. */
+@import url("https://cdn.jsdelivr.net/fontsource/css/ibm-plex-mono@latest/index.css");
 
 @import "tailwindcss";
 
@@ -131,4 +133,121 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.22);
   background-clip: padding-box;
+}
+
+/* ----------------------------------------------------------------------------
+   Risk dashboard — OSINT signal-room look. Scoped under .risk-root so the
+   dark ops aesthetic never leaks into the light app shell.
+   (IBM Plex Mono is imported at the top of this file.)
+---------------------------------------------------------------------------- */
+.risk-root {
+  --r-bg: #070b16;
+  --r-surface: #0b1020;
+  --r-panel: rgba(15, 22, 41, 0.72);
+  --r-line: rgba(148, 163, 184, 0.13);
+  --r-ink: #e6eaf2;
+  --r-muted: #8b93a7;
+  --r-faint: #565e73;
+  --r-cyan: #22d3ee;
+  --r-ok: #2dd4bf;
+  --r-warn: #fbbf24;
+  --r-high: #fb923c;
+  --r-crit: #fb7185;
+  font-family: Pretendard, "Pretendard Variable", sans-serif;
+  color: var(--r-ink);
+  background:
+    radial-gradient(1200px 500px at 75% -10%, rgba(34, 211, 238, 0.07), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(251, 113, 133, 0.05), transparent 55%),
+    var(--r-bg);
+  position: relative;
+}
+.risk-root::before {
+  /* faint tactical grid */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 20%, black 35%, transparent 100%);
+}
+.risk-mono {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.risk-label {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--r-faint);
+}
+.risk-panel {
+  background: var(--r-panel);
+  border: 1px solid var(--r-line);
+  border-radius: 14px;
+  backdrop-filter: blur(6px);
+  position: relative;
+}
+.risk-panel::after {
+  /* hairline top light, like a lit console edge */
+  content: "";
+  position: absolute;
+  inset: 0 12% auto 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(230, 234, 242, 0.14), transparent);
+  border-radius: 1px;
+}
+
+/* live pulse */
+@keyframes risk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.5); }
+  60% { box-shadow: 0 0 0 7px rgba(34, 211, 238, 0); }
+}
+.risk-live-dot {
+  animation: risk-pulse 2.2s ease-out infinite;
+}
+
+/* staggered entrance */
+@keyframes risk-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.risk-in {
+  opacity: 0;
+  animation: risk-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+/* sparkline draw-in */
+@keyframes risk-draw {
+  from { stroke-dashoffset: 300; }
+  to { stroke-dashoffset: 0; }
+}
+.risk-spark path.draw {
+  stroke-dasharray: 300;
+  animation: risk-draw 1.2s ease-out forwards;
+}
+
+/* radar sweep for the initializing state */
+@keyframes risk-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.risk-sweep {
+  animation: risk-sweep 3.2s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+.risk-root ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .risk-live-dot, .risk-in, .risk-spark path.draw, .risk-sweep {
+    animation: none;
+    opacity: 1;
+  }
 }

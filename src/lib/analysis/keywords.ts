@@ -46,20 +46,29 @@ function tokenize(text: string): string[] {
   });
 }
 
+// Unique keyword-worthy tokens of one text (stopwords/short/excluded removed).
+// Uniqueness per text keeps one spammy comment from dominating counts.
+export function keywordTokens(
+  text: string,
+  exclude: Set<string> = new Set(),
+): string[] {
+  const seen = new Set<string>();
+  for (const token of tokenize(text)) {
+    if (token.length < 2 || STOPWORDS.has(token) || exclude.has(token)) continue;
+    seen.add(token);
+  }
+  return [...seen];
+}
+
 // Top keywords across `texts`, excluding stopwords and any `exclude` words
-// (e.g. the member's own aliases). Counts each word once per comment so one
-// spammy comment can't dominate.
+// (e.g. the member's own aliases).
 export function extractKeywords(
   texts: string[],
   { exclude = new Set<string>(), top = 10 }: { exclude?: Set<string>; top?: number } = {},
 ): Keyword[] {
   const counts = new Map<string, number>();
   for (const text of texts) {
-    const seen = new Set<string>();
-    for (const token of tokenize(text)) {
-      if (token.length < 2 || STOPWORDS.has(token) || exclude.has(token)) continue;
-      if (seen.has(token)) continue;
-      seen.add(token);
+    for (const token of keywordTokens(text, exclude)) {
       counts.set(token, (counts.get(token) ?? 0) + 1);
     }
   }

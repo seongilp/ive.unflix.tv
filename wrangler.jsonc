@@ -16,6 +16,14 @@
   "observability": {
     "enabled": true
   },
+  "d1_databases": [
+    // Risk intelligence time series (snapshots + alerts).
+    {
+      "binding": "RISK_DB",
+      "database_name": "ive-risk",
+      "database_id": "03ff90f9-911d-4521-96f2-9dd3d6131a21"
+    }
+  ],
   "kv_namespaces": [
     // App cache: video / Shorts classification per channel.
     // NOTE: ive-prefixed namespaces — must NOT be shared with the old
