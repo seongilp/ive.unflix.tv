@@ -254,6 +254,117 @@ function Spark({ trend, color }: { trend: Snap[]; color: string }) {
   );
 }
 
+// Words that also appear as risk-category stems get flagged red in the cloud.
+const RISK_WORD_SET = new Set(
+  Object.values(RISK_LABELS).flatMap((l) => l.split("·")),
+);
+function isRiskWord(w: string): boolean {
+  return [...RISK_WORD_SET].some((r) => w.includes(r)) ||
+    /논란|사과|해명|입장|의혹|폭로|열애|불참|중단|탈퇴/.test(w);
+}
+
+// Deterministic spiral word cloud. Font size scales with sqrt(count); tiles
+// are placed along an Archimedean spiral with AABB collision so nothing
+// overlaps. No layout thrash — pure geometry from the keyword list.
+function WordCloud({ words }: { words: { word: string; count: number }[] }) {
+  const W = 460;
+  const H = 240;
+  const top = words.slice(0, 34);
+  if (top.length === 0) {
+    return (
+      <p className="py-10 text-center text-[12px]" style={{ color: "var(--r-faint)" }}>
+        키워드 수집 전이에요
+      </p>
+    );
+  }
+  const max = top[0].count;
+  const min = top[top.length - 1].count || 1;
+
+  interface Box { x: number; y: number; w: number; h: number; }
+  const placed: Box[] = [];
+  const hit = (b: Box) =>
+    placed.some(
+      (p) => Math.abs(p.x - b.x) * 2 < p.w + b.w && Math.abs(p.y - b.y) * 2 < p.h + b.h,
+    );
+
+  const nodes = top.map((k, i) => {
+    const t = (k.count - min) / Math.max(1, max - min);
+    const size = 12 + Math.round(Math.sqrt(t) * 28); // 12–40px
+    const risky = isRiskWord(k.word);
+    // Cyan→teal ramp by rank for normal words; red family for risk words.
+    const hueColor = risky
+      ? "var(--r-crit)"
+      : i < 4
+        ? "var(--r-cyan)"
+        : i < 12
+          ? "#7dd3fc"
+          : "#94a3b8";
+    const bw = k.word.length * size * 0.62 + 8;
+    const bh = size * 1.25;
+
+    // Walk the spiral until a non-colliding slot is found.
+    let x = 0, y = 0;
+    for (let step = 0; step < 900; step++) {
+      const angle = 0.55 * step;
+      const rad = 4 + 3.4 * angle;
+      x = Math.cos(angle) * rad;
+      y = Math.sin(angle) * rad * 0.62; // squash vertically to fill the panel
+      const box = { x, y, w: bw, h: bh };
+      if (
+        Math.abs(x) + bw / 2 < W / 2 &&
+        Math.abs(y) + bh / 2 < H / 2 &&
+        !hit(box)
+      ) {
+        placed.push(box);
+        break;
+      }
+    }
+    return { k, size, hueColor, risky, x, y, i };
+  });
+
+  return (
+    <svg
+      viewBox={`${-W / 2} ${-H / 2} ${W} ${H}`}
+      className="h-auto w-full"
+      role="img"
+      aria-label="키워드 클라우드"
+    >
+      {nodes.map(({ k, size, hueColor, risky, x, y, i }) => (
+        <g key={k.word} className="risk-in" style={{ animationDelay: `${140 + i * 22}ms` }}>
+          <text
+            x={x}
+            y={y}
+            fontSize={size}
+            fontWeight={size > 26 ? 800 : size > 18 ? 700 : 600}
+            fill={hueColor}
+            textAnchor="middle"
+            dominantBaseline="central"
+            style={{
+              fontFamily: size > 22 ? "Pretendard, sans-serif" : "inherit",
+              opacity: risky ? 1 : 0.92,
+            }}
+          >
+            {k.word}
+          </text>
+          {risky && (
+            <text
+              x={x}
+              y={y + size * 0.72}
+              fontSize={7}
+              fill="var(--r-crit)"
+              textAnchor="middle"
+              opacity="0.65"
+              style={{ letterSpacing: "0.1em" }}
+            >
+              ▲{k.count}
+            </text>
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 /** 긍/중/부 thin stacked meter on the dark surface. */
 function ToneBar({ s }: { s: Snap }) {
   const total = s.positive + s.neutral + s.negative || 1;
@@ -550,7 +661,7 @@ export function RiskView() {
             )}
           </section>
 
-          {/* ── Source matrix + keywords ── */}
+          {/* ── Source matrix ── */}
           <section className="risk-panel risk-in flex flex-col gap-4 p-4 lg:col-span-2" style={{ animationDelay: "600ms" }}>
             <div>
               <div className="risk-label mb-2.5">Source Matrix</div>
@@ -572,22 +683,20 @@ export function RiskView() {
                 )}
               </div>
             </div>
-            <div>
-              <div className="risk-label mb-2.5">Trending Terms</div>
-              <div className="flex flex-wrap gap-1.5">
-                {(groupTrend[groupTrend.length - 1]?.keywords ?? []).slice(0, 12).map((k) => (
-                  <span
-                    key={k.word}
-                    className="risk-mono rounded border border-[var(--r-line)] px-1.5 py-0.5 text-[10.5px]"
-                    style={{ color: "var(--r-muted)" }}
-                  >
-                    {k.word} <span style={{ color: "var(--r-faint)" }}>{k.count}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
           </section>
         </div>
+
+        {/* ── Keyword cloud ── */}
+        <section className="risk-panel risk-in flex flex-col p-4 sm:p-5" style={{ animationDelay: "660ms" }}>
+          <div className="mb-1 flex items-baseline justify-between">
+            <span className="risk-label">Chatter Cloud · 최근 스캔</span>
+            <span className="risk-mono flex items-center gap-3 text-[10px]" style={{ color: "var(--r-faint)" }}>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-cyan)]" />일반</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-crit)]" />리스크 어휘</span>
+            </span>
+          </div>
+          <WordCloud words={groupTrend[groupTrend.length - 1]?.keywords ?? []} />
+        </section>
 
         <p className="risk-in px-1 pb-2 text-[10.5px] leading-relaxed" style={{ color: "var(--r-faint)", animationDelay: "680ms" }}>
           유튜브(공식+외부)·뉴스·DC·인스타를 2시간 주기로 수집해 각 채널의 평시 베이스라인 대비

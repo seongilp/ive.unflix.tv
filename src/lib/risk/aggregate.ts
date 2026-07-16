@@ -35,7 +35,7 @@ export interface RiskAgg {
 }
 
 const KEYWORD_CAP = 300; // per-bucket keyword map size between batches
-export const SNAPSHOT_KEYWORDS = 15; // keywords persisted per snapshot row
+export const SNAPSHOT_KEYWORDS = 40; // keywords persisted per snapshot row (feeds the cloud)
 
 export function newAgg(ts: number): RiskAgg {
   return { ts, stats: {} };
