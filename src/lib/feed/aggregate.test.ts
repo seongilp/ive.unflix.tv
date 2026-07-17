@@ -2,12 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { collectFeed, mergeFeedItems } from "./aggregate";
 import type { FeedItem } from "./types";
 import * as naver from "./sources/naver";
+import * as daum from "./sources/daum";
 import * as dc from "./sources/dc";
 import * as instagram from "./sources/instagram";
+import * as pann from "./sources/pann";
 
 vi.mock("./sources/naver");
+vi.mock("./sources/daum");
 vi.mock("./sources/dc");
 vi.mock("./sources/instagram");
+vi.mock("./sources/pann");
+
+// Default every mocked adapter to empty so a test only wires the sources it
+// cares about (and none hit the network). Reset first so the default sticks.
+function resetAdapters() {
+  vi.clearAllMocks();
+  for (const a of [naver, daum, dc, instagram, pann]) {
+    vi.mocked(a.fetchItems).mockResolvedValue([]);
+  }
+}
 
 const item = (
   id: string,
@@ -54,9 +67,7 @@ describe("mergeFeedItems", () => {
 });
 
 describe("collectFeed", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(resetAdapters);
 
   it("isolates a failing adapter — a rejected source contributes nothing and never aborts the merge", async () => {
     vi.mocked(naver.fetchItems).mockResolvedValue([item("n1", 3), item("n2", 1)]);

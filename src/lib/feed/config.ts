@@ -16,13 +16,16 @@ export const KEYWORDS = [
 ];
 
 // Sources wired AND enabled. 스레드/더쿠/인스티즈 are deferred.
-export const ENABLED_SOURCES: FeedSource[] = ["naver", "daum", "dc", "instagram"];
+export const ENABLED_SOURCES: FeedSource[] = ["naver", "daum", "dc", "instagram", "pann"];
 
 // Global cap is a payload backstop; the real fairness knob is the per-source
 // cap below (news volume must not push old Instagram posts out of the feed).
 export const FEED_LIMIT = 400;
 export const FEED_PER_SOURCE_LIMIT = 100;
 export const NAVER_PER_KEYWORD = 30;
+// Nate Pann results per keyword (comment-sorted). Kept low — robots.txt is
+// Disallow:/, so we read as little as gives a useful signal.
+export const PANN_PER_KEYWORD = 15;
 // Daum web search (Kakao Search API) results per keyword.
 export const DAUM_PER_KEYWORD = 25;
 // Per-account cap — 7 accounts, so keep each slice small and polite.
@@ -66,6 +69,7 @@ export const SOURCE_LABELS: Record<FeedSource, string> = {
   daum: "다음",
   dc: "DC",
   instagram: "인스타",
+  pann: "네이트판",
   threads: "스레드",
   theqoo: "더쿠",
   instiz: "인스티즈",

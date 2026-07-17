@@ -23,7 +23,7 @@ interface AnalysisUnit {
   id: string;
   text: string;
   likeCount: number;
-  origin: "youtube" | "news" | "dc" | "instagram";
+  origin: "youtube" | "news" | "dc" | "instagram" | "pann";
   author: string;
   videoId?: string; // youtube comments — jump to video
   url?: string; // feed items — open the original post/article
@@ -35,14 +35,16 @@ const ORIGIN_LABELS: Record<AnalysisUnit["origin"], string> = {
   news: "뉴스",
   dc: "DC",
   instagram: "인스타",
+  pann: "네이트판",
 };
-const ORIGIN_ORDER: AnalysisUnit["origin"][] = ["youtube", "news", "dc", "instagram"];
+const ORIGIN_ORDER: AnalysisUnit["origin"][] = ["youtube", "news", "dc", "pann", "instagram"];
 
 type SourceFilter = "all" | AnalysisUnit["origin"];
 
 function feedOrigin(source: FeedItem["source"]): AnalysisUnit["origin"] {
   if (source === "naver" || source === "daum") return "news";
   if (source === "instagram") return "instagram";
+  if (source === "pann") return "pann";
   return "dc";
 }
 
@@ -272,6 +274,7 @@ export function AnalysisView({
               { value: "youtube", label: "유튜브" },
               { value: "news", label: "뉴스" },
               { value: "dc", label: "DC" },
+              { value: "pann", label: "네이트판" },
               { value: "instagram", label: "인스타" },
             ] as const
           ).map((o) => (

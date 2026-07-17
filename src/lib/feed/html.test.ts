@@ -11,6 +11,10 @@ describe("stripHtml", () => {
   it("decodes &amp; last so double-encoded entities stay literal", () => {
     expect(stripHtml("&amp;quot;")).toBe("&quot;");
   });
+  it("decodes hex apostrophe entities (Nate Pann)", () => {
+    expect(stripHtml("아이브 &#x27;ATTITUDE&#x27; 어때")).toBe("아이브 'ATTITUDE' 어때");
+    expect(stripHtml("&#39;a&#x27;b&#39;")).toBe("'a'b'");
+  });
 });
 
 describe("truncate", () => {

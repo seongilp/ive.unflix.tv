@@ -104,6 +104,7 @@ const SOURCE_LABELS: Record<string, string> = {
   yt_ext: "외부 유튜브",
   news: "뉴스",
   dc: "DC",
+  pann: "네이트판",
   instagram: "인스타",
 };
 

@@ -5,6 +5,7 @@ export type FeedSource =
   | "daum"
   | "dc"
   | "instagram"
+  | "pann"
   | "threads"
   | "theqoo"
   | "instiz";

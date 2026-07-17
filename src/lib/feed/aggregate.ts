@@ -4,6 +4,7 @@ import * as naver from "./sources/naver";
 import * as daum from "./sources/daum";
 import * as dc from "./sources/dc";
 import * as instagram from "./sources/instagram";
+import * as pann from "./sources/pann";
 
 // Merge per-source lists into one newest-first, deduped feed. The cap is
 // applied PER SOURCE (newest first), not globally — a high-volume source
@@ -50,6 +51,7 @@ const ADAPTERS: Partial<Record<FeedSource, Adapter>> = {
   daum,
   dc,
   instagram,
+  pann,
 };
 
 // Run every enabled adapter in parallel; a failing adapter contributes nothing
