@@ -283,6 +283,33 @@ body {
 .risk-modal-in {
   animation: risk-modal-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+
+/* Chatter cloud — words glide to their new spiral slot when the scope,
+   snapshot, weighting, or layout seed changes; fresh words pop in. */
+.risk-root .wc-node {
+  transition: transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.risk-root .wc-word {
+  transition: font-size 0.4s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease;
+}
+@keyframes wc-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+/* `backwards` (not `both`): once the pop finishes, the hover scale below is
+   free to take over — a filled animation would outrank it. */
+.risk-root .wc-pop {
+  transform-origin: center;
+  animation: wc-pop 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+  transition: transform 0.16s ease;
+}
+.risk-root .wc-node:hover .wc-pop {
+  transform: scale(1.06);
+}
 @media (prefers-reduced-motion: reduce) {
   .risk-tile, .risk-detail-cue, .risk-modal-in { transition: none; animation: none; }
+  .risk-root .wc-node, .risk-root .wc-word, .risk-root .wc-pop {
+    transition: none;
+    animation: none;
+  }
 }

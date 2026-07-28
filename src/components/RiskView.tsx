@@ -4,7 +4,7 @@
 // trends, risk-category signals, and the alert feed — all from the server-side
 // risk pipeline (D1 snapshots collected every 2h by the cron worker).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MEMBERS } from "@/lib/analysis/members";
 import { RISK_LABELS } from "@/lib/risk/terms";
@@ -336,147 +336,595 @@ function isRiskWord(w: string): boolean {
     /논란|사과|해명|입장|의혹|폭로|열애|불참|중단|탈퇴/.test(w);
 }
 
-// Deterministic spiral word cloud. Font size scales with sqrt(count); tiles
-// are placed along an Archimedean spiral with AABB collision so nothing
-// overlaps. No layout thrash — pure geometry from the keyword list.
-function WordCloud({ words }: { words: { word: string; count: number }[] }) {
-  const W = 460;
-  const H = 240;
-  const top = words.slice(0, 34);
-  if (top.length === 0) {
-    return (
-      <p className="py-10 text-center text-[12px]" style={{ color: "var(--r-faint)" }}>
-        키워드 수집 전이에요
-      </p>
-    );
-  }
-  const max = top[0].count;
-  const min = top[top.length - 1].count || 1;
+// ── Chatter cloud ───────────────────────────────────────────────────────────
+// Interactive keyword cloud: pick a scope (그룹/멤버/채널), scrub the snapshot
+// timeline, weight by raw frequency or by lift over the previous run, filter to
+// risk vocabulary, and drill into a single word. Layout is a seeded Archimedean
+// spiral with AABB collision — the seed folds in scope/snapshot/mode/shuffle so
+// two different reads never land on the same arrangement.
 
-  interface Box { x: number; y: number; w: number; h: number; }
+const CLOUD_W = 480;
+const CLOUD_H = 252;
+const CLOUD_MAX_WORDS = 34;
+const CLOUD_STEP_MS = 1200;
+
+type CloudMode = "count" | "delta";
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashSeed(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// Hangul/CJK glyphs are ~1em wide, latin much narrower. The old flat 0.62em
+// estimate under-measured Korean words, which is why tiles collided.
+const WIDE_GLYPH = /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9fff]/;
+function textWidth(word: string, size: number): number {
+  let em = 0;
+  for (const ch of word) {
+    if (WIDE_GLYPH.test(ch)) em += 1;
+    else if (/[A-Z0-9]/.test(ch)) em += 0.64;
+    else if (/[a-z]/.test(ch)) em += 0.55;
+    else em += 0.4;
+  }
+  return em * size;
+}
+
+interface CloudItem {
+  word: string;
+  count: number;
+  delta: number;
+  weight: number;
+  risky: boolean;
+  fresh: boolean; // absent from the previous snapshot
+}
+interface CloudNode extends CloudItem {
+  size: number;
+  x: number;
+  y: number;
+  rot: number;
+  w: number;
+  h: number;
+  rank: number;
+}
+
+function layoutCloud(items: CloudItem[], seed: number): CloudNode[] {
+  if (items.length === 0) return [];
+  const rnd = mulberry32(seed);
+  const max = items[0].weight;
+  const min = items[items.length - 1].weight || 1;
+  const a0 = rnd() * Math.PI * 2;
+  const dir = rnd() < 0.5 ? 1 : -1;
+
+  interface Box { x: number; y: number; w: number; h: number }
   const placed: Box[] = [];
   const hit = (b: Box) =>
     placed.some(
       (p) => Math.abs(p.x - b.x) * 2 < p.w + b.w && Math.abs(p.y - b.y) * 2 < p.h + b.h,
     );
 
-  const nodes = top.map((k, i) => {
-    const t = (k.count - min) / Math.max(1, max - min);
-    const size = 12 + Math.round(Math.sqrt(t) * 28); // 12–40px
-    const risky = isRiskWord(k.word);
-    // Gradient bucket by risk + prominence; brighter/warmer near the top.
-    const grad = risky
-      ? "wc-crit"
-      : i < 3
-        ? "wc-hot"
-        : i < 10
-          ? "wc-cool"
-          : "wc-faint";
-    const bw = k.word.length * size * 0.62 + 8;
-    const bh = size * 1.25;
+  const nodes: CloudNode[] = [];
+  items.forEach((it, rank) => {
+    const t = (it.weight - min) / Math.max(1, max - min);
+    const size = 12 + Math.round(Math.pow(t, 0.62) * 28); // 12–40px
+    // A few mid-weight words stand on end — breaks the "same blob" look.
+    const rot = rank >= 3 && size <= 22 && rnd() < 0.2 ? -90 : 0;
+    const tw = textWidth(it.word, size) + 7;
+    const th = size * 1.2;
+    const bw = rot ? th : tw;
+    const bh = rot ? tw : th;
 
-    // Walk the spiral until a non-colliding slot is found.
-    let x = 0, y = 0;
-    for (let step = 0; step < 900; step++) {
-      const angle = 0.55 * step;
-      const rad = 4 + 3.4 * angle;
-      x = Math.cos(angle) * rad;
-      y = Math.sin(angle) * rad * 0.62; // squash vertically to fill the panel
+    for (let step = 0; step < 2600; step++) {
+      const prog = 0.36 * step;
+      const angle = a0 + dir * prog;
+      const rad = 4 + 2.5 * prog;
+      const x = Math.cos(angle) * rad;
+      const y = Math.sin(angle) * rad * 0.6; // squash vertically to fill the panel
       const box = { x, y, w: bw, h: bh };
       if (
-        Math.abs(x) + bw / 2 < W / 2 &&
-        Math.abs(y) + bh / 2 < H / 2 &&
+        Math.abs(x) + bw / 2 < CLOUD_W / 2 &&
+        Math.abs(y) + bh / 2 < CLOUD_H / 2 &&
         !hit(box)
       ) {
         placed.push(box);
-        break;
+        nodes.push({ ...it, size, x, y, rot, w: tw, h: th, rank });
+        return;
       }
     }
-    return { k, size, grad, risky, x, y, i };
+    // No free slot inside the panel — drop the word rather than overlap.
   });
+  return nodes;
+}
+
+/** Per-word count history across the scrubbed snapshot series. */
+function WordBars({ values, color }: { values: number[]; color: string }) {
+  const max = Math.max(1, ...values);
+  const n = values.length;
+  return (
+    <svg viewBox={`0 0 ${n * 4} 16`} className="h-4 w-full" preserveAspectRatio="none" aria-hidden>
+      {values.map((v, i) => (
+        <rect
+          key={i}
+          x={i * 4}
+          y={16 - Math.max(1, (v / max) * 16)}
+          width={2.6}
+          height={Math.max(1, (v / max) * 16)}
+          rx={1}
+          fill={color}
+          opacity={i === n - 1 ? 1 : 0.45}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function CloudChip({
+  on,
+  tone = "var(--r-cyan)",
+  onClick,
+  title,
+  children,
+}: {
+  on: boolean;
+  tone?: string;
+  onClick: () => void;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={title}
+      className="rounded-full border px-2.5 py-[3px] text-[11px] font-semibold leading-none transition-colors"
+      style={{
+        borderColor: on ? `color-mix(in srgb, ${tone} 55%, transparent)` : "var(--r-line)",
+        background: on ? `color-mix(in srgb, ${tone} 14%, transparent)` : "transparent",
+        color: on ? tone : "var(--r-muted)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ChatterCloud({
+  members,
+  sources,
+}: {
+  members: Record<string, Snap[]>;
+  sources: Snap[];
+}) {
+  const [scopeId, setScopeId] = useState("m:all");
+  const [mode, setMode] = useState<CloudMode>("count");
+  const [riskOnly, setRiskOnly] = useState(false);
+  const [shuffle, setShuffle] = useState(0);
+  const [tIdx, setTIdx] = useState<number | null>(null); // null = follow latest
+  const [playing, setPlaying] = useState(false);
+  const [pinned, setPinned] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  const series = useMemo<Snap[]>(() => {
+    if (scopeId.startsWith("s:")) {
+      const row = sources.find((s) => s.source === scopeId.slice(2));
+      return row ? [row] : [];
+    }
+    return members[scopeId.slice(2)] ?? [];
+  }, [scopeId, members, sources]);
+
+  const last = series.length - 1;
+  const idx = Math.max(0, Math.min(last, tIdx ?? last));
+  const snap = series[idx];
+  const prev = idx > 0 ? series[idx - 1] : undefined;
+  const scrubbable = series.length > 1;
+
+  // Timeline playback — steps through the retained snapshots and loops.
+  useEffect(() => {
+    if (!playing || !scrubbable) return;
+    const timer = setInterval(
+      () => setTIdx((i) => ((i ?? last) + 1) % series.length),
+      CLOUD_STEP_MS,
+    );
+    return () => clearInterval(timer);
+  }, [playing, scrubbable, series.length, last]);
+
+  const totalCount = useMemo(
+    () => snap?.keywords.reduce((n, k) => n + k.count, 0) ?? 0,
+    [snap],
+  );
+
+  const items = useMemo<CloudItem[]>(() => {
+    if (!snap) return [];
+    const before = new Map(prev?.keywords.map((k) => [k.word, k.count]) ?? []);
+    return snap.keywords
+      .map((k) => {
+        const had = before.get(k.word);
+        const delta = prev ? k.count - (had ?? 0) : 0;
+        return {
+          word: k.word,
+          count: k.count,
+          delta,
+          // No previous run means no lift to show — 급상승 renders its empty state.
+          weight: mode === "delta" ? Math.max(0, delta) : k.count,
+          risky: isRiskWord(k.word),
+          fresh: prev !== undefined && had === undefined,
+        };
+      })
+      .filter((k) => (riskOnly ? k.risky : true) && k.weight > 0)
+      .sort((a, b) => b.weight - a.weight || b.count - a.count)
+      .slice(0, CLOUD_MAX_WORDS);
+  }, [snap, prev, mode, riskOnly]);
+
+  const nodes = useMemo(
+    () => layoutCloud(items, hashSeed(`${scopeId}|${snap?.ts ?? 0}|${mode}|${riskOnly}|${shuffle}`)),
+    [items, scopeId, snap?.ts, mode, riskOnly, shuffle],
+  );
+
+  const focusWord = pinned ?? hovered;
+  const focus = nodes.find((n) => n.word === focusWord);
+  const history = useMemo(
+    () =>
+      focus
+        ? series.map((s) => s.keywords.find((k) => k.word === focus.word)?.count ?? 0)
+        : [],
+    [focus, series],
+  );
+  // The per-source rows are group-wide and only exist for the latest run, so the
+  // channel split is meaningful only for the group scope at the newest snapshot.
+  const channels = useMemo(() => {
+    if (!focus || scopeId !== "m:all" || idx !== last) return [];
+    return sources
+      .map((s) => ({
+        source: s.source,
+        count: s.keywords.find((k) => k.word === focus.word)?.count ?? 0,
+      }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+  }, [focus, sources, scopeId, idx, last]);
+
+  const pickScope = (id: string) => {
+    setScopeId(id);
+    setTIdx(null);
+    setPinned(null);
+    setHovered(null);
+    setPlaying(false);
+  };
+  // Arrow keys walk the cloud by rank so it's usable without a pointer.
+  const step = (dir: 1 | -1) => {
+    if (nodes.length === 0) return;
+    const at = nodes.findIndex((n) => n.word === focusWord);
+    const next = nodes[(at + dir + nodes.length) % nodes.length] ?? nodes[0];
+    setPinned(next.word);
+    setHovered(null);
+  };
+
+  const scopeLabel = scopeId.startsWith("s:")
+    ? (SOURCE_LABELS[scopeId.slice(2)] ?? scopeId.slice(2))
+    : (KR_NAMES[scopeId.slice(2)] ?? scopeId.slice(2));
 
   return (
-    <svg
-      viewBox={`${-W / 2} ${-H / 2} ${W} ${H}`}
-      className="h-auto w-full"
-      role="img"
-      aria-label="키워드 클라우드"
-    >
-      <defs>
-        {/* Diagonal gradients — brighter core, deeper tail, for depth. */}
-        <linearGradient id="wc-hot" x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0" stopColor="#e0fbff" />
-          <stop offset="0.5" stopColor="#38e8ff" />
-          <stop offset="1" stopColor="#0ea5c4" />
-        </linearGradient>
-        <linearGradient id="wc-cool" x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0" stopColor="#bfe9ff" />
-          <stop offset="0.55" stopColor="#7dd3fc" />
-          <stop offset="1" stopColor="#4b93c9" />
-        </linearGradient>
-        <linearGradient id="wc-faint" x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0" stopColor="#aab6cc" />
-          <stop offset="1" stopColor="#5b667e" />
-        </linearGradient>
-        <linearGradient id="wc-crit" x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0" stopColor="#ffd9df" />
-          <stop offset="0.5" stopColor="#fb7185" />
-          <stop offset="1" stopColor="#d1425c" />
-        </linearGradient>
-        {/* Soft outer glow; strength dialed per-word via feDropShadow opacity. */}
-        <filter id="wc-glow-strong" x="-40%" y="-40%" width="180%" height="180%">
-          <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#22d3ee" floodOpacity="0.55" />
-        </filter>
-        <filter id="wc-glow-soft" x="-40%" y="-40%" width="180%" height="180%">
-          <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22d3ee" floodOpacity="0.3" />
-        </filter>
-        <filter id="wc-glow-crit" x="-45%" y="-45%" width="190%" height="190%">
-          <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#fb7185" floodOpacity="0.6" />
-        </filter>
-      </defs>
-      {nodes.map(({ k, size, grad, risky, x, y, i }) => {
-        const filter = risky
-          ? "url(#wc-glow-crit)"
-          : size >= 26
-            ? "url(#wc-glow-strong)"
-            : size >= 18
-              ? "url(#wc-glow-soft)"
-              : undefined;
-        return (
-          <g key={k.word} className="risk-in" style={{ animationDelay: `${140 + i * 22}ms` }}>
-            <text
-              x={x}
-              y={y}
-              fontSize={size}
-              fontWeight={size > 26 ? 800 : size > 18 ? 700 : 600}
-              fill={`url(#${grad})`}
-              filter={filter}
-              textAnchor="middle"
-              dominantBaseline="central"
-              style={{
-                fontFamily: size > 22 ? "Pretendard, sans-serif" : "inherit",
-                opacity: risky ? 1 : size < 16 ? 0.85 : 0.96,
-              }}
+    <section className="risk-panel risk-in flex flex-col p-4 sm:p-5" style={{ animationDelay: "660ms" }}>
+      <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+        <span className="risk-label">
+          Chatter Cloud · {scopeLabel}
+          {mode === "delta" ? " · 급상승" : ""}
+        </span>
+        <span className="risk-mono flex items-center gap-3 text-[10px]" style={{ color: "var(--r-faint)" }}>
+          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-cyan)]" />일반</span>
+          <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-crit)]" />리스크 어휘</span>
+          <span>{fmtTime(snap?.ts ?? 0)}</span>
+        </span>
+      </div>
+
+      {/* Scope: 그룹·멤버 / 채널 */}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <CloudChip on={scopeId === "m:all"} onClick={() => pickScope("m:all")}>전체</CloudChip>
+        {MEMBERS.map((m) => (
+          <CloudChip key={m.key} on={scopeId === `m:${m.key}`} onClick={() => pickScope(`m:${m.key}`)}>
+            {m.name}
+          </CloudChip>
+        ))}
+        {sources.length > 0 && <span className="mx-1 h-3 w-px" style={{ background: "var(--r-line)" }} />}
+        {sources.map((s) => (
+          <CloudChip
+            key={s.source}
+            on={scopeId === `s:${s.source}`}
+            tone="var(--r-ok)"
+            title="최근 스캔 1회"
+            onClick={() => pickScope(`s:${s.source}`)}
+          >
+            {SOURCE_LABELS[s.source] ?? s.source}
+          </CloudChip>
+        ))}
+      </div>
+
+      {/* Weighting · filter · layout · timeline */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <CloudChip on={mode === "count"} onClick={() => setMode("count")} title="언급 빈도로 크기 결정">빈도</CloudChip>
+          <CloudChip
+            on={mode === "delta"}
+            tone="var(--r-warn)"
+            onClick={() => setMode("delta")}
+            title="직전 스캔 대비 증가량으로 크기 결정"
+          >
+            급상승
+          </CloudChip>
+          <CloudChip on={riskOnly} tone="var(--r-crit)" onClick={() => setRiskOnly((v) => !v)}>
+            리스크만
+          </CloudChip>
+          <button
+            type="button"
+            onClick={() => setShuffle((s) => s + 1)}
+            title="배치 다시 굴리기"
+            className="rounded-full border px-2.5 py-[3px] text-[11px] font-semibold leading-none transition-colors hover:text-[var(--r-ink)]"
+            style={{ borderColor: "var(--r-line)", color: "var(--r-muted)" }}
+          >
+            ⤿ 재배치
+          </button>
+        </div>
+        {scrubbable && (
+          <div className="flex min-w-[190px] flex-1 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPlaying((p) => !p)}
+              aria-label={playing ? "타임라인 정지" : "타임라인 재생"}
+              className="risk-mono text-[11px]"
+              style={{ color: playing ? "var(--r-cyan)" : "var(--r-muted)" }}
             >
-              {k.word}
-            </text>
-            {risky && (
-              <text
-                x={x}
-                y={y + size * 0.72}
-                fontSize={7}
-                fill="var(--r-crit)"
-                textAnchor="middle"
-                opacity="0.7"
-                style={{ letterSpacing: "0.1em" }}
+              {playing ? "❚❚" : "▶"}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={last}
+              value={idx}
+              onChange={(e) => {
+                setTIdx(Number(e.target.value));
+                setPlaying(false);
+              }}
+              aria-label="스냅샷 타임라인"
+              className="h-3 min-w-0 flex-1 cursor-pointer"
+              style={{ accentColor: "var(--r-cyan)" }}
+            />
+            <span className="risk-mono shrink-0 text-[10px]" style={{ color: "var(--r-faint)" }}>
+              RUN {idx + 1}/{series.length}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {nodes.length === 0 ? (
+        <p className="py-12 text-center text-[12px]" style={{ color: "var(--r-faint)" }}>
+          {!snap
+            ? "키워드 수집 전이에요"
+            : mode === "delta" && !prev
+              ? "이 스캔이 첫 관측이라 비교할 직전 데이터가 없어요"
+              : riskOnly
+                ? mode === "delta"
+                  ? "직전 스캔 대비 늘어난 리스크 어휘가 없어요"
+                  : "이 스캔에서 리스크 어휘는 감지되지 않았어요"
+                : mode === "delta"
+                  ? "직전 스캔 대비 늘어난 어휘가 없어요"
+                  : "키워드 수집 전이에요"}
+        </p>
+      ) : (
+        <svg
+          viewBox={`${-CLOUD_W / 2} ${-CLOUD_H / 2} ${CLOUD_W} ${CLOUD_H}`}
+          className="h-auto w-full focus:outline-none"
+          tabIndex={0}
+          role="group"
+          aria-label="키워드 클라우드 — 좌우 방향키로 단어 이동"
+          onPointerLeave={() => setHovered(null)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); step(1); }
+            else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); step(-1); }
+            else if (e.key === "Escape") setPinned(null);
+          }}
+        >
+          <defs>
+            {/* Diagonal gradients — brighter core, deeper tail, for depth. */}
+            <linearGradient id="wc-hot" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0" stopColor="#e0fbff" />
+              <stop offset="0.5" stopColor="#38e8ff" />
+              <stop offset="1" stopColor="#0ea5c4" />
+            </linearGradient>
+            <linearGradient id="wc-cool" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0" stopColor="#bfe9ff" />
+              <stop offset="0.55" stopColor="#7dd3fc" />
+              <stop offset="1" stopColor="#4b93c9" />
+            </linearGradient>
+            <linearGradient id="wc-faint" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0" stopColor="#aab6cc" />
+              <stop offset="1" stopColor="#5b667e" />
+            </linearGradient>
+            <linearGradient id="wc-crit" x1="0" y1="0" x2="0.4" y2="1">
+              <stop offset="0" stopColor="#ffd9df" />
+              <stop offset="0.5" stopColor="#fb7185" />
+              <stop offset="1" stopColor="#d1425c" />
+            </linearGradient>
+            {/* Soft outer glow; strength dialed per-word below. */}
+            <filter id="wc-glow-strong" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#22d3ee" floodOpacity="0.55" />
+            </filter>
+            <filter id="wc-glow-soft" x="-40%" y="-40%" width="180%" height="180%">
+              <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#22d3ee" floodOpacity="0.3" />
+            </filter>
+            <filter id="wc-glow-crit" x="-45%" y="-45%" width="190%" height="190%">
+              <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="#fb7185" floodOpacity="0.6" />
+            </filter>
+          </defs>
+
+          {/* Background click target — clears the pinned word. */}
+          <rect
+            x={-CLOUD_W / 2}
+            y={-CLOUD_H / 2}
+            width={CLOUD_W}
+            height={CLOUD_H}
+            fill="transparent"
+            onClick={() => setPinned(null)}
+          />
+
+          {nodes.map((n) => {
+            const lit = focusWord === n.word;
+            const dim = focusWord !== null && !lit;
+            const filter = lit
+              ? n.risky ? "url(#wc-glow-crit)" : "url(#wc-glow-strong)"
+              : n.risky
+                ? "url(#wc-glow-crit)"
+                : n.size >= 26
+                  ? "url(#wc-glow-strong)"
+                  : n.size >= 18
+                    ? "url(#wc-glow-soft)"
+                    : undefined;
+            const grad = n.risky
+              ? "wc-crit"
+              : n.rank < 3
+                ? "wc-hot"
+                : n.rank < 10
+                  ? "wc-cool"
+                  : "wc-faint";
+            return (
+              <g
+                key={n.word}
+                className="wc-node"
+                transform={`translate(${n.x},${n.y}) rotate(${n.rot})`}
+                onPointerEnter={() => setHovered(n.word)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPinned((p) => (p === n.word ? null : n.word));
+                }}
+                style={{ cursor: "pointer" }}
               >
-                ▲{k.count}
-              </text>
+                <g className="wc-pop" style={{ animationDelay: `${60 + n.rank * 20}ms` }}>
+                  {lit && (
+                    <rect
+                      x={-n.w / 2}
+                      y={-n.h / 2}
+                      width={n.w}
+                      height={n.h}
+                      rx={n.h * 0.3}
+                      fill={n.risky ? "rgba(251,113,133,0.12)" : "rgba(34,211,238,0.12)"}
+                      stroke={n.risky ? "rgba(251,113,133,0.45)" : "rgba(34,211,238,0.45)"}
+                      strokeWidth="0.8"
+                    />
+                  )}
+                  {/* Hit area — the glyph outline alone is a fussy target. */}
+                  <rect
+                    x={-n.w / 2}
+                    y={-n.h / 2}
+                    width={n.w}
+                    height={n.h}
+                    fill="transparent"
+                    pointerEvents="all"
+                  />
+                  <text
+                    className="wc-word"
+                    fontWeight={n.size > 26 ? 800 : n.size > 18 ? 700 : 600}
+                    fill={`url(#${grad})`}
+                    filter={filter}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    pointerEvents="none"
+                    style={{
+                      fontSize: n.size,
+                      fontFamily: "Pretendard, sans-serif",
+                      opacity: dim ? 0.22 : n.risky || lit ? 1 : n.size < 16 ? 0.85 : 0.96,
+                    }}
+                  >
+                    {n.word}
+                  </text>
+                  {(n.risky || (mode === "delta" && n.rank < 6)) && !dim && (
+                    <text
+                      y={n.h / 2 + 4}
+                      fontSize={7}
+                      fill={n.risky ? "var(--r-crit)" : "var(--r-warn)"}
+                      textAnchor="middle"
+                      opacity="0.75"
+                      pointerEvents="none"
+                      style={{ letterSpacing: "0.1em" }}
+                    >
+                      ▲{mode === "delta" ? n.delta : n.count}
+                    </text>
+                  )}
+                </g>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+
+      {/* Drilldown strip */}
+      <div
+        className="mt-1 flex min-h-[42px] flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2.5 py-2"
+        style={{ background: "rgba(148,163,184,0.05)", border: "1px solid var(--r-line)" }}
+      >
+        {!focus ? (
+          <span className="text-[11.5px]" style={{ color: "var(--r-faint)" }}>
+            단어를 올리거나 클릭하면 스캔별 추이와 채널 분포가 열려요 · 방향키로도 이동해요
+          </span>
+        ) : (
+          <>
+            <span
+              className="text-[14px] font-extrabold"
+              style={{ color: focus.risky ? "var(--r-crit)" : "var(--r-cyan)" }}
+            >
+              {focus.word}
+            </span>
+            <span className="risk-mono text-[10.5px]" style={{ color: "var(--r-muted)" }}>
+              {focus.count.toLocaleString()}회 · 비중 {totalCount ? ((focus.count / totalCount) * 100).toFixed(1) : "0.0"}%
+            </span>
+            {prev && (
+              <span
+                className="risk-mono text-[10.5px]"
+                style={{
+                  color: focus.fresh
+                    ? "var(--r-warn)"
+                    : focus.delta > 0
+                      ? "var(--r-cyan)"
+                      : "var(--r-faint)",
+                }}
+              >
+                {focus.fresh
+                  ? "신규 등장"
+                  : `직전 대비 ${focus.delta >= 0 ? "+" : ""}${focus.delta}`}
+              </span>
             )}
-          </g>
-        );
-      })}
-    </svg>
+            {channels.length > 0 && (
+              <span className="risk-mono text-[10.5px]" style={{ color: "var(--r-faint)" }}>
+                채널 {channels
+                  .map((c) => `${SOURCE_LABELS[c.source] ?? c.source} ${c.count}`)
+                  .join(" · ")}
+              </span>
+            )}
+            {history.length > 1 && (
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="risk-mono text-[10px]" style={{ color: "var(--r-faint)" }}>
+                  최근 {history.length}회
+                </span>
+                <span className="w-[110px]">
+                  <WordBars values={history} color={focus.risky ? "#fb7185" : "#22d3ee"} />
+                </span>
+              </span>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1048,17 +1496,8 @@ export function RiskView() {
           </section>
         </div>
 
-        {/* ── Keyword cloud ── */}
-        <section className="risk-panel risk-in flex flex-col p-4 sm:p-5" style={{ animationDelay: "660ms" }}>
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="risk-label">Chatter Cloud · 최근 스캔</span>
-            <span className="risk-mono flex items-center gap-3 text-[10px]" style={{ color: "var(--r-faint)" }}>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-cyan)]" />일반</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[var(--r-crit)]" />리스크 어휘</span>
-            </span>
-          </div>
-          <WordCloud words={groupTrend[groupTrend.length - 1]?.keywords ?? []} />
-        </section>
+        {/* ── Chatter cloud (interactive) ── */}
+        <ChatterCloud members={d.members} sources={d.sources} />
 
         <p className="risk-in px-1 pb-2 text-[10.5px] leading-relaxed" style={{ color: "var(--r-faint)", animationDelay: "680ms" }}>
           유튜브(공식+외부)·뉴스·DC·인스타를 2시간 주기로 수집해 각 채널의 평시 베이스라인 대비
