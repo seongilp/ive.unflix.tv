@@ -17,6 +17,22 @@ Controls: **play/pause**, **speed** (slow / normal / fast), comment **order**
 (top vs newest), **loop** (replay forever), and a **theater** mode that hides
 the video list for a clean overlay.
 
+### Views
+
+The header switches between eight modes; five are channel-wide rather than
+per-video (`hall`, `search`, `feed`, `analysis`, `risk`):
+
+- **라이브 / 동기화 / 목록** — comment replay (free-running, timestamp-synced to
+  the player, or a plain list).
+- **전당 / 검색** — top comments across the channel, and full-text search.
+- **피드** — 유튜브·뉴스(네이버)·다음·DC·네이트판·인스타 items in one stream.
+- **분석** — sentiment / keyword breakdown of the loaded comments.
+- **리스크** — OSINT-style threat monitor over the D1 snapshot series: per-member
+  threat level, mention/negativity trends, the alert feed, a source matrix, and
+  the interactive Chatter Cloud (scope / timeline / 빈도·급상승 / per-word drilldown).
+  Snapshots are collected every 2h; alerts only fire on deviation from each
+  channel's own baseline.
+
 ## Setup
 
 1. Get a **YouTube Data API v3** key from the
@@ -37,11 +53,41 @@ the video list for a clean overlay.
 
 4. Open http://localhost:3000.
 
-## Deploy (Cloudflare Workers)
+## Deploy (ebs home server · Next standalone)
 
-Runs on Cloudflare Workers via [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
+Live: **https://ive.unflix.tv** — a cloudflared tunnel fronts
+`ebs:127.0.0.1:8490`, where systemd's `app-ive.service` runs
+`/home/ubuntu/apps/ive/server.js` (`output: "standalone"`).
 
-Live: **https://ive.zihado.workers.dev**
+Nothing in `src/` knows it left Workers: `src/instrumentation.ts` injects a
+file-backed KV, a `node:sqlite` D1, and a fire-and-forget `waitUntil` into the
+`__cloudflare-context__` global, so `appCache()` / `riskDb()` / `bg()` keep
+working unchanged.
+
+There is no auto-deploy. Build locally, rsync, restart:
+
+```bash
+pnpm build
+rm -rf .next/standalone/.next/static && cp -R .next/static .next/standalone/.next/static
+ssh ebs 'tar czf /tmp/ive-backup-$(date +%F-%H%M%S).tar.gz -C ~/apps ive'
+rsync -a --delete --exclude .env.runtime .next/standalone/ ebs:/home/ubuntu/apps/ive/
+ssh ebs 'sudo systemctl restart app-ive && systemctl is-active app-ive'
+curl -sI https://ive.unflix.tv | head -1
+```
+
+`--exclude .env.runtime` is load-bearing: that file (server-side only) holds
+`PORT`/`HOSTNAME`, the KV/D1 shim paths, and the API keys — see `.env.example`.
+Rollback = untar the backup over `~/apps/ive` and restart.
+
+The risk collector runs on the same host: `worker-host.mjs` drives
+`workers/cron`'s worker from crontab (collect every 2h, discover 2×/day) against
+`APP_BASE=http://127.0.0.1:8490`, bypassing the tunnel.
+
+### Cloudflare Workers (legacy path)
+
+The [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) setup
+(`open-next.config.ts`, `wrangler.jsonc`) is still in the repo, but the
+`workers.dev` deployment is currently down (404). To bring it back:
 
 ```bash
 # one-time: create the KV namespaces and paste ids into wrangler.jsonc
@@ -56,20 +102,18 @@ pnpm run deploy       # opennextjs-cloudflare build && deploy
 pnpm preview          # build + run locally on workerd
 ```
 
-KV bindings:
+Bindings the Workers path expects (mirrored by the shims above):
 - `SHORTS_CACHE` — caches each channel's video/Shorts classification (1-day TTL),
   so steady-state requests make far fewer subrequests.
 - `NEXT_INC_CACHE_KV` — OpenNext incremental cache, fronted by a regional
   edge cache (Cache API).
+- `RISK_DB` — D1 time series for the risk dashboard (`migrations/0001_risk.sql`).
 
-### Auto-deploy on push (GitHub Actions)
+### GitHub Actions
 
-`.github/workflows/deploy.yml` builds and deploys on every push to `main`.
-Add two repo secrets (Settings → Secrets and variables → Actions):
-- `CLOUDFLARE_API_TOKEN` — a token with the "Edit Cloudflare Workers" template
-- `CLOUDFLARE_ACCOUNT_ID` — your account id
-
-Until `CLOUDFLARE_API_TOKEN` is set, CI builds but skips the deploy step.
+Only Claude automation lives in CI: `claude.yml` (label an issue `claude` → it
+opens an implementation PR) and `claude-notify-merge.yml` (Telegram ping on
+merge). Merges and deploys are manual.
 
 ## Notes
 

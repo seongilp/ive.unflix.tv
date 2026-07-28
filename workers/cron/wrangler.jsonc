@@ -9,7 +9,14 @@
     "crons": ["7 */2 * * *", "23 3,15 * * *"]
   },
   "vars": {
-    "APP_BASE": "https://ive.zihado.workers.dev"
+    // Public origin. ive.zihado.workers.dev is dead — the app now runs as a Node
+    // standalone on the ebs home server behind a cloudflared tunnel.
+    "APP_BASE": "https://ive.unflix.tv"
   }
   // OPS_KEY is a secret: `wrangler secret put OPS_KEY -c workers/cron/wrangler.jsonc`
+  //
+  // This config only applies to a Cloudflare deploy. In production the same
+  // worker.js is driven by `worker-host.mjs` from crontab on ebs, which reads
+  // APP_BASE/OPS_KEY from its own .env and points at http://127.0.0.1:8490
+  // (straight to the app, skipping the tunnel).
 }
