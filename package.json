@@ -2,7 +2,7 @@
   "name": "ive",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.5.1",
+  "packageManager": "pnpm@11.29.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,10 +15,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "next": "16.2.7",
+    "next": "16.4.6",
     "node-html-parser": "^7.1.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.19.11",
@@ -27,7 +27,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.7",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.9",
